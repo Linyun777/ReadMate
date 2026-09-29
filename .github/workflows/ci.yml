@@ -91,6 +91,15 @@ jobs:
         working-directory: extension
         run: npm ci
 
+      # ⚠️ E2E 加载的是 `.output/chrome-mv3` 里**构建好的**扩展。
+      #
+      # job 之间不共享文件系统——`extension` job 构建的产物在这个容器里
+      # 并不存在，所以必须自己构建一次。漏掉这一步，Playwright 找不到
+      # 扩展，所有用例都会失败。
+      - name: 构建扩展
+        working-directory: extension
+        run: npm run build
+
       # E2E 的服务端由 extension/e2e/start-server.mjs 启动，
       # 它会在 server/.venv 里找 Python——所以这里必须建在同一位置。
       - name: 创建服务端虚拟环境
