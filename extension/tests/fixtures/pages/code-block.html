@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Code Blocks</title>
+  </head>
+  <body>
+    <!--
+      Phase 77 fixture：**代码与预格式文本**。
+
+      这里测的是「不该被翻译的东西确实没被翻译」：
+        - 块级代码（<pre> / 等宽的块级容器）应整体跳过，一个 Block 都不产生
+        - 段落里的 inline <code> / <kbd> 不同——它是**成对占位符**
+          `<0>npm install</0>`，标识符留在块里让模型看得见，但改不动
+
+      ⚠️ inline code 曾经是**原子占位符** `<0/>`：元素保住了，但内容不发给
+      模型，模型看到一个空占位符就容易直接丢掉，译文里就少了那个函数名。
+      2026-09-28 改成成对占位符，见 `shared/constants.ts` 的 IGNORED_TAGS 注释。
+
+      这两条容易混：把 inline code 当成整段跳过，会丢掉整段的翻译；
+      反过来把块级代码当成占位符，会把代码翻掉。
+    -->
+    <article>
+      <h1>Code Blocks</h1>
+
+      <p id="prose-before">The following snippet shows how to configure the client.</p>
+
+      <pre id="block-code"><code>const client = new OpenAI({
+  apiKey: process.env.LLM_API_KEY,
+  baseURL: process.env.LLM_BASE_URL,
+});</code></pre>
+
+      <p id="prose-after">Call the helper after constructing the client.</p>
+
+      <p id="inline-code">
+        Run <code>npm install</code> first, then <code>npm run dev</code> to start the dev server.
+      </p>
+
+      <pre id="plain-pre">This is a plain preformatted block with no code element inside it.</pre>
+
+      <p id="kbd-text">
+        Press <kbd>Cmd</kbd> + <kbd>K</kbd> to open the command palette.
+      </p>
+
+      <p id="var-text">
+        The value of <var>x</var> must be greater than <samp>0</samp>.
+      </p>
+
+      <p id="code-with-language">
+        A longer inline example: <code>translate(items: Block[]) =&gt; Promise&lt;Result[]&gt;</code>
+        which returns a promise.
+      </p>
+    </article>
+  </body>
+</html>

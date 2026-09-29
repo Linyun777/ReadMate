@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Table Structure</title>
+  </head>
+  <body>
+    <!--
+      Phase 77 fixture：**表格**。
+
+      表格在渲染上与普通块级元素不同（方案第 86.2 节）：
+      双语模式下译文要追加到**单元格内部**，而不是表格外面——
+      否则整个表格结构会被挤坏。
+
+      同时测「表头也要翻译」与「单元格各自成块」。
+    -->
+    <article>
+      <h1>Table Structure</h1>
+
+      <p id="table-intro">The table below lists the supported options.</p>
+
+      <table id="options-table">
+        <thead>
+          <tr>
+            <th>Option</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>concurrency</td>
+            <td>number</td>
+            <td>How many requests may be in flight at once.</td>
+          </tr>
+          <tr>
+            <td>maxRetries</td>
+            <td>number</td>
+            <td>How many times a failed batch is retried before giving up.</td>
+          </tr>
+          <tr>
+            <td>lookaheadScreens</td>
+            <td>number</td>
+            <td>How far below the viewport content is translated ahead of time.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p id="table-outro">Values are clamped to the documented range.</p>
+
+      <table id="caption-table">
+        <caption>Table with a caption</caption>
+        <tbody>
+          <tr>
+            <td>Single cell row</td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+  </body>
+</html>

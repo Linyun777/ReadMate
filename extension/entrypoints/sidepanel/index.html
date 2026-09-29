@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>伴读 · ReadMate</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel__header">
+        <h1 class="panel__title">伴读 · ReadMate</h1>
+        <p id="page-title" class="panel__page-title"></p>
+      </header>
+
+      <p id="status" class="panel__status" role="status">正在读取页面状态…</p>
+
+      <div class="panel__actions">
+        <button id="translate" class="btn btn--primary" type="button">翻译当前页面</button>
+        <button id="restore" class="btn" type="button">恢复原文</button>
+      </div>
+
+      <fieldset class="segmented">
+        <legend class="segmented__legend">显示模式</legend>
+        <div class="segmented__track">
+          <label class="segmented__item">
+            <input type="radio" name="mode" value="original" />
+            <span>原文</span>
+          </label>
+          <label class="segmented__item">
+            <input type="radio" name="mode" value="bilingual" checked />
+            <span>双语</span>
+          </label>
+          <label class="segmented__item">
+            <input type="radio" name="mode" value="chinese" />
+            <span>中文</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <section class="panel__section">
+        <h2 class="panel__label">页面总结</h2>
+        <button id="summarize" class="btn panel__wide" type="button">总结当前页面</button>
+
+        <div id="summary" class="summary" hidden>
+          <p id="summary-gist" class="summary__gist"></p>
+          <ul id="summary-points" class="summary__points"></ul>
+        </div>
+      </section>
+
+      <nav class="panel__links">
+        <button id="reader" class="panel__link" type="button">阅读模式</button>
+        <button id="options" class="panel__link" type="button">设置</button>
+      </nav>
+
+      <footer class="panel__footer">
+        <div class="panel__stat">
+          <h2 class="panel__label">用量</h2>
+          <p class="panel__hint">
+            <span id="usage-summary" class="mono">正在读取…</span>
+          </p>
+          <p id="usage-cost" class="panel__hint panel__hint--cost mono"></p>
+        </div>
+
+        <div class="panel__stat">
+          <h2 class="panel__label">译文缓存</h2>
+          <p class="panel__hint">
+            <span id="cache-summary" class="mono">—</span>
+          </p>
+          <button id="clear-cache" class="btn panel__wide" type="button">清除缓存</button>
+        </div>
+      </footer>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

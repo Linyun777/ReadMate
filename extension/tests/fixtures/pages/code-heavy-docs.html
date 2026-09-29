@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Code Heavy Docs</title>
+  </head>
+  <body>
+    <!--
+      Phase 20 fixture：**模拟 React 官方文档那种代码密集的页面**。
+
+      关键区别：这里的代码块**不是** `<pre><code>`，
+      而是 Sandpack 风格——每行一个 `<div>`、每个 token 一个 `<span>`，
+      靠 CSS 做高亮。
+
+      只认标签的跳过规则会完全漏掉它们，于是一行代码变成一个 Block，
+      整页几千条，而且都在翻译 `const` / `return` 这种词。
+
+      判据因此改成「**等宽字体 + 块级显示**」，见 `core/segmenter/filters.ts`。
+
+      注意代码原文里的 `<` 必须转义——否则浏览器会把它当成真标签解析。
+    -->
+    <main>
+      <h1>Managing State</h1>
+
+      <p id="prose-1">
+        React components can hold local state between renders. The useState hook
+        returns a pair: the current value and a function that updates it.
+      </p>
+
+      <div class="sp-editor" data-title="counter">
+        <div class="sp-header">App.js</div>
+        <div class="sp-code" style="font-family: ui-monospace, SFMono-Regular, monospace; white-space: pre; display: block">
+        <div class="sp-line"><span class="token">import</span> <span class="token">{</span> <span class="token">useState</span> <span class="token">}</span> <span class="token">from</span> <span class="token">&quot;react&quot;;</span></div>
+        <div class="sp-line"></div>
+        <div class="sp-line"><span class="token">export</span> <span class="token">default</span> <span class="token">function</span> <span class="token">Counter()</span> <span class="token">{</span></div>
+        <div class="sp-line"><span class="token">const</span> <span class="token">[count,</span> <span class="token">setCount]</span> <span class="token">=</span> <span class="token">useState(0);</span></div>
+        <div class="sp-line"></div>
+        <div class="sp-line"><span class="token">function</span> <span class="token">handleClick()</span> <span class="token">{</span></div>
+        <div class="sp-line"><span class="token">setCount(count</span> <span class="token">+</span> <span class="token">1);</span></div>
+        <div class="sp-line"><span class="token">}</span></div>
+        <div class="sp-line"></div>
+        <div class="sp-line"><span class="token">return</span> <span class="token">(</span></div>
+        <div class="sp-line"><span class="token">&lt;button</span> <span class="token">onClick={handleClick}&gt;</span></div>
+        <div class="sp-line"><span class="token">Clicked</span> <span class="token">{count}</span> <span class="token">times</span></div>
+        <div class="sp-line"><span class="token">&lt;/button&gt;</span></div>
+        <div class="sp-line"><span class="token">);</span></div>
+        <div class="sp-line"><span class="token">}</span></div>
+        </div>
+      </div>
+
+      <p id="prose-2">
+        Calling the setter schedules a re-render. React batches updates that happen
+        inside the same event handler, so the component renders only once.
+      </p>
+
+      <h2>Theming</h2>
+
+      <p id="prose-3">
+        A theme describes colours and typography for the whole application. Wrap the
+        tree in a provider so descendants can read it without passing props.
+      </p>
+
+      <div class="sp-editor" data-title="theme">
+        <div class="sp-header">App.js</div>
+        <div class="sp-code" style="font-family: ui-monospace, SFMono-Regular, monospace; white-space: pre; display: block">
+        <div class="sp-line"><span class="token">const</span> <span class="token">theme</span> <span class="token">=</span> <span class="token">createTheme({</span></div>
+        <div class="sp-line"><span class="token">palette:</span> <span class="token">{</span></div>
+        <div class="sp-line"><span class="token">primary:</span> <span class="token">{</span> <span class="token">main:</span> <span class="token">&quot;#1976d2&quot;</span> <span class="token">},</span></div>
+        <div class="sp-line"><span class="token">secondary:</span> <span class="token">{</span> <span class="token">main:</span> <span class="token">&quot;#dc004e&quot;</span> <span class="token">},</span></div>
+        <div class="sp-line"><span class="token">},</span></div>
+        <div class="sp-line"><span class="token">typography:</span> <span class="token">{</span></div>
+        <div class="sp-line"><span class="token">fontFamily:</span> <span class="token">&quot;Roboto,</span> <span class="token">sans-serif&quot;,</span></div>
+        <div class="sp-line"><span class="token">fontSize:</span> <span class="token">14,</span></div>
+        <div class="sp-line"><span class="token">},</span></div>
+        <div class="sp-line"><span class="token">});</span></div>
+        <div class="sp-line"></div>
+        <div class="sp-line"><span class="token">export</span> <span class="token">default</span> <span class="token">function</span> <span class="token">App()</span> <span class="token">{</span></div>
+        <div class="sp-line"><span class="token">return</span> <span class="token">(</span></div>
+        <div class="sp-line"><span class="token">&lt;ThemeProvider</span> <span class="token">theme={theme}&gt;</span></div>
+        <div class="sp-line"><span class="token">&lt;Button</span> <span class="token">variant=&quot;contained&quot;&gt;Hello&lt;/Button&gt;</span></div>
+        <div class="sp-line"><span class="token">&lt;/ThemeProvider&gt;</span></div>
+        <div class="sp-line"><span class="token">);</span></div>
+        <div class="sp-line"><span class="token">}</span></div>
+        </div>
+      </div>
+
+      <p id="prose-4">
+        That covers the basics of local state and theming. The next section looks at
+        how updates propagate through the component tree.
+      </p>
+    </main>
+  </body>
+</html>

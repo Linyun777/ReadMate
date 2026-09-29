@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Streaming breaks on multi-byte characters · Issue #42</title>
+  </head>
+  <body>
+    <!--
+      Phase 14 用页面：复刻 GitHub issue 页的布局骨架。
+
+      关键结构（决定适配器行为）：
+        - 正文 .markdown-body 与 .comment-body → 应该翻
+        - 代码视图 .blob-code / .react-code-lines → 不该翻
+          （它们是普通 div/span，不是 <pre>/<code>，通用规则拦不住）
+        - .file-navigation / [data-testid="tree-view"] → 不该翻
+    -->
+    <div role="navigation" aria-label="Global">
+      <a href="/">Home</a>
+      <a href="/pulls">Pull requests</a>
+    </div>
+
+    <main>
+      <div data-testid="repository-view">
+        <div class="file-navigation">
+          <span>main</span>
+          <span>3 branches</span>
+        </div>
+
+        <div data-testid="tree-view">
+          <div>extension</div>
+          <div>server</div>
+        </div>
+
+        <div data-testid="issue-viewer">
+          <h1>Streaming breaks on multi-byte characters</h1>
+
+          <div class="markdown-body">
+            When a multi-byte character is split across two chunks the decoder produces garbage
+            unless the stream flag is set.
+          </div>
+
+          <div class="comment-body markdown-body">
+            Confirmed. Passing stream true to the decoder fixes it because the decoder then holds
+            the incomplete sequence until the next chunk.
+          </div>
+
+          <div class="react-code-lines">
+            <div class="blob-num">1</div>
+            <div class="blob-code">const decoder = new TextDecoder();</div>
+            <div class="blob-num">2</div>
+            <div class="blob-code">buffer += decoder.decode(value, { stream: true });</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

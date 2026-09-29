@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dynamic Feed</title>
+    <style>
+      body {
+        max-width: 680px;
+        margin: 40px auto;
+        padding: 0 20px;
+        font-family: Georgia, serif;
+        line-height: 1.7;
+      }
+      .item {
+        padding: 12px 0;
+        border-bottom: 1px solid #e0ded8;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Phase 77 fixture：**动态内容**（方案第 13 节）。
+
+      页面上有两个会改动 DOM 的按钮，分别对应两条不同的捕获路径：
+
+        加载更多   → childList：新增节点
+        原地改写   → characterData：文本节点内容变化
+
+      两者都必须被 MutationObserver 捕获并接入翻译链路，
+      而且**不能**把插件自己插入的译文节点当成新内容（方案第 13.2 节）。
+    -->
+    <h1>Dynamic Feed</h1>
+
+    <div id="feed">
+      <article class="item" id="item-1">
+        <h2>First item</h2>
+        <p>The first item is rendered on the server and present from the start.</p>
+      </article>
+
+      <article class="item" id="item-2">
+        <h2>Second item</h2>
+        <p>The second item is also present from the start.</p>
+      </article>
+    </div>
+
+    <p id="live-region">This paragraph is updated in place by the page.</p>
+
+    <button id="load-more" type="button">Load more</button>
+    <button id="rewrite" type="button">Rewrite live region</button>
+
+    <script>
+      let counter = 2;
+
+      document.querySelector('#load-more').addEventListener('click', () => {
+        counter += 1;
+
+        const item = document.createElement('article');
+        item.className = 'item';
+        item.id = `item-${counter}`;
+
+        const heading = document.createElement('h2');
+        heading.textContent = `Item number ${counter}`;
+
+        const body = document.createElement('p');
+        body.textContent = `This item was appended by the page after the initial render.`;
+
+        item.append(heading, body);
+        document.querySelector('#feed').append(item);
+      });
+
+      document.querySelector('#rewrite').addEventListener('click', () => {
+        const region = document.querySelector('#live-region');
+        region.textContent = 'This text was replaced in place by the page script.';
+      });
+    </script>
+  </body>
+</html>

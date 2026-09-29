@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>阅读模式 · ReadMate</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="reader__bar">
+      <span class="reader__brand">阅读模式</span>
+      <span id="reader-status" class="reader__status" role="status"></span>
+      <span class="reader__spacer"></span>
+      <!-- biome-ignore lint/a11y/useValidAnchor: href 由 main.ts 拿到原文地址后写入，此处只是占位 -->
+      <a id="reader-source" class="reader__link" href="#" rel="noreferrer noopener" hidden>
+        查看原文
+      </a>
+      <button id="reader-note" class="reader__button reader__button--ghost" type="button">
+        生成笔记
+      </button>
+      <button id="reader-translate" class="reader__button" type="button">翻译正文</button>
+    </header>
+
+    <main class="reader__page">
+      <!--
+        笔记面板放在正文之前，而不是之后：
+        笔记是「读之前先看个大概、读之后回来查」用的，
+        放下面等于要滚完整篇才看得到。
+      -->
+      <section id="reader-note-panel" class="note" hidden>
+        <div class="note__head">
+          <span class="note__label">学习笔记</span>
+          <span id="reader-note-model" class="note__model"></span>
+          <button id="reader-note-export" class="note__export" type="button">
+            导出 Markdown
+          </button>
+        </div>
+
+        <p id="reader-note-positioning" class="note__positioning"></p>
+
+        <div id="reader-note-concepts-block" class="note__block" hidden>
+          <h2 class="note__heading">核心概念</h2>
+          <dl id="reader-note-concepts" class="note__concepts"></dl>
+        </div>
+
+        <div id="reader-note-outline" class="note__outline"></div>
+
+        <div id="reader-note-takeaways-block" class="note__block" hidden>
+          <h2 class="note__heading">结论</h2>
+          <ul id="reader-note-takeaways" class="note__points"></ul>
+        </div>
+      </section>
+
+      <article class="reader__article">
+        <!-- biome-ignore lint/a11y/useHeadingContent: 标题由 main.ts 从提取结果写入 -->
+        <h1 id="reader-title" class="reader__title"></h1>
+        <div id="reader-body" class="reader__body"></div>
+      </article>
+
+      <p id="reader-empty" class="reader__empty" hidden>
+        没有可显示的正文。请从原文页面重新进入阅读模式。
+      </p>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

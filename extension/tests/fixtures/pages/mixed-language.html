@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mixed Language Content</title>
+  </head>
+  <body>
+    <!--
+      Phase 77 fixture：**已经是目标语言的内容不该被再翻一遍**。
+
+      判定规则在 `looksLikeTargetLanguage`（方案第 9.4 节）：
+      目标语言是中文时，汉字占比达到一半以上就跳过。
+
+      注意「中英混排」那一段——它是这个规则最容易出错的地方：
+      整段既有英文也有中文，应该**照常翻译**（英文部分需要译文），
+      而不是因为「含有中文」就整段跳过。
+    -->
+    <article>
+      <h1>Mixed Language Content</h1>
+
+      <p id="pure-english">This paragraph is entirely in English and should be translated.</p>
+
+      <p id="pure-chinese">这一段完全是中文，不应该被再次翻译，否则会产生无意义的结果。</p>
+
+      <p id="mostly-chinese">这是一段以中文为主的文字，中间夹了一个 English 单词。</p>
+
+      <p id="mixed-half">
+        This paragraph mixes English and 中文 in roughly equal amounts, so it needs translation.
+      </p>
+
+      <p id="mostly-english">
+        这一段里大部分是英文，only a few Chinese characters appear, so it should be translated.
+      </p>
+
+      <p id="chinese-with-code">
+        这段中文里含有 <code>code</code> 与 <a href="/docs">链接</a>，应当跳过翻译。
+      </p>
+
+      <p id="japanese-text">これは日本語のテキストです。中国語の目標言語とは異なります。</p>
+
+      <p id="numeric-only">2026 42 3.14 100% ¥1,234</p>
+
+      <p id="url-only">https://example.com/docs/getting-started</p>
+
+      <p id="mixed-numeric">Version 2 released in 2026 with 15 new features.</p>
+    </article>
+  </body>
+</html>

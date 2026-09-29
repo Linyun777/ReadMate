@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reddit - Dive into anything</title>
+  </head>
+  <body>
+    <!--
+      Phase 14 用页面：复刻 Reddit 新版（shreddit）的布局骨架。
+
+      关键结构（决定适配器行为）：
+        - 正文用**自定义元素** shreddit-post / shreddit-comment / shreddit-text-body
+          → 通用块级标签表认不出来，必须靠适配器的 extraBlockTags
+        - shreddit-sidebar → 不该被翻译
+        - 操作栏 shreddit-comment-action-row → 不该被翻译
+    -->
+    <shreddit-app>
+      <div role="navigation" aria-label="Main">
+        <a href="/">Home</a>
+        <a href="/popular">Popular</a>
+      </div>
+
+      <main>
+        <shreddit-post>
+          <shreddit-post-title>
+            Why does the segmenter treat custom elements as inline?
+          </shreddit-post-title>
+
+          <shreddit-text-body>
+            Custom elements are not in the standard block tag list, so the segmenter walks up
+            past them and merges the whole post into a single block.
+          </shreddit-text-body>
+
+          <shreddit-comment-action-row>
+            <button type="button">Vote</button>
+            <button type="button">Reply</button>
+          </shreddit-comment-action-row>
+        </shreddit-post>
+
+        <shreddit-comment>
+          <shreddit-text-body>
+            Adding them to extraBlockTags fixes it. Each custom element then becomes its own
+            block.
+          </shreddit-text-body>
+
+          <shreddit-comment-action-row>
+            <button type="button">Vote</button>
+          </shreddit-comment-action-row>
+        </shreddit-comment>
+
+        <shreddit-sidebar>
+          <h2>Related communities</h2>
+          <div>Something you should not translate</div>
+        </shreddit-sidebar>
+      </main>
+    </shreddit-app>
+  </body>
+</html>

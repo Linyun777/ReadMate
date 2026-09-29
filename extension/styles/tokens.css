@@ -1,0 +1,241 @@
+/**
+ * 设计令牌（所有界面共用）。
+ *
+ * ## 为什么单独抽一份
+ *
+ * 改版前 popup 的强调色是蓝（#185fa5）、侧边栏是绿（#2f6f4f）——
+ * 同一个扩展的两处界面用了两套色板。各写各的必然走形，
+ * 所以颜色、圆角、阴影、缓动全部集中到这里。
+ *
+ * ## 分层思路（借鉴 shadcn/ui）
+ *
+ * 不直接写具体颜色，而是描述**角色**：
+ *
+ *   --page            最底层背景
+ *   --surface         卡片 / 面板
+ *   --surface-hover   悬停态
+ *   --border          细边框（低对比，只做分隔）
+ *   --text            正文
+ *   --text-muted      次要文字（说明、单位）
+ *   --accent          强调色（主按钮、选中态）
+ *
+ * 深色模式只换这一层的值，组件样式一行都不用动。
+ *
+ * ## 动效原则（借鉴 transitions.dev / beui.dev）
+ *
+ *   - 状态变化用「淡入 + 轻微缩放」，不用生硬的显示/隐藏
+ *   - 缓动用 spring 感的 `--ease-spring`，而不是线性
+ *   - **尊重 `prefers-reduced-motion`** —— 这是可访问性要求，不是可选项
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- 表面分层 ---------- */
+  --page: #fafafa;
+  --surface: #ffffff;
+  --surface-hover: #f4f4f5;
+  --surface-sunken: #f4f4f5;
+
+  /* ---------- 边框 ---------- */
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  /* ---------- 文字 ---------- */
+  --text: #18181b;
+  --text-muted: #71717a;
+  --text-subtle: #a1a1aa;
+
+  /* ---------- 强调色 ---------- */
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-text: #ffffff;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+
+  /* ---------- 语义色 ---------- */
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-soft: #fef2f2;
+  --success: #16a34a;
+
+  /* ---------- 圆角 ---------- */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ---------- 阴影（克制：靠边框分层，不靠重投影）---------- */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow: 0 2px 8px rgb(0 0 0 / 6%);
+  --shadow-lg: 0 8px 28px rgb(0 0 0 / 12%);
+
+  /* ---------- 动效 ---------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration: 200ms;
+
+  /* ---------- 字体 ---------- */
+  --font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 数据与代码用等宽——token 数、成本、路径对齐后好读得多 */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/*
+ * 深色模式只换值，不改结构。
+ * 对比度都过 WCAG AA（正文 4.5:1 以上）。
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --page: #09090b;
+    --surface: #18181b;
+    --surface-hover: #27272a;
+    --surface-sunken: #27272a;
+
+    --border: #27272a;
+    --border-strong: #3f3f46;
+
+    --text: #fafafa;
+    --text-muted: #a1a1aa;
+    --text-subtle: #71717a;
+
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-text: #0b1220;
+    --accent-soft: #172554;
+    --accent-border: #1e40af;
+
+    --danger: #f87171;
+    --danger-hover: #fca5a5;
+    --danger-soft: #450a0a;
+    --success: #4ade80;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow: 0 2px 8px rgb(0 0 0 / 50%);
+    --shadow-lg: 0 8px 28px rgb(0 0 0 / 60%);
+  }
+}
+
+/*
+ * 尊重「减少动态效果」。
+ *
+ * 不是可选项：前庭功能障碍用户会因为位移动画不适。
+ * 借鉴 beui.dev 的做法——所有组件都默认 reduced-motion 安全。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- 共用基础 ---------- */
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * 统一的按钮基类。
+ *
+ * 有 press 反馈（按下时轻微缩小）——借鉴 beui.dev 的 spring-pressed button。
+ * 不用 `:active { scale }` 而是 transform，避免触发重排。
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent);
+}
+
+.btn--primary:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.btn--danger {
+  border-color: transparent;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.btn--danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/*
+ * 加载中的微光扫掠（shimmer）——借鉴 beautifului.dev 的 loading state。
+ * 比转圈更安静，适合面板这种常驻界面。
+ */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--surface-hover) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* 数据类文本统一用等宽 */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

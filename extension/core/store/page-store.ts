@@ -1,0 +1,265 @@
+/**
+ * 页面级状态存储（方案第 11、75 节）。
+ *
+ * 职责：
+ *   - 持有当前页面的全部 `BlockEntry`（Block + DOM 绑定 + 状态）
+ *   - 维护页面级状态机（`IDLE / SCANNING / TRANSLATING / ACTIVE / PAUSED / RESTORED`）
+ *   - 提供按状态检索与进度统计
+ *
+ * **不负责**：分段（`segmenter`）、请求（`translator` / `queue`）、写 DOM（`renderer`）。
+ *
+ * 生命周期：只存在于 content script 内。页面在则状态在，页面刷新即丢失——
+ * 这正是想要的，因为 `BlockEntry` 持有的 DOM 引用在刷新后本来就失效了。
+ */
+
+import type {
+  BlockEntry,
+  BlockStats,
+  PageState,
+  TranslationBlock,
+  TranslationStatus,
+} from '@/shared/types';
+
+/** `upsert` 的结果。 */
+export type UpsertResult = 'added' | 'replaced' | 'unchanged';
+
+export class PageStore {
+  readonly #entries = new Map<string, BlockEntry>();
+  /**
+   * 容器元素 → Block ID。
+   *
+   * 存在的理由：**Block ID 由分段器按局部序号生成**（`block-001`），
+   * 对同一片 DOM 重新分段会得到与已有 Block 冲突的 ID。
+   * 用元素身份做真正的锚点，就能判断「这个容器我是不是已经登记过」。
+   *
+   * 用 `WeakMap` 而非 `Map`：元素被页面移除后不该阻止其被回收。
+   * 代价是没法 `clear()`，所以 `clear()` 里直接换一个新实例。
+   */
+  #byElement = new WeakMap<Element, string>();
+  #pageState: PageState = 'IDLE';
+
+  /* ---------------------------------------------------------------- *
+   * 页面级状态
+   * ---------------------------------------------------------------- */
+
+  get pageState(): PageState {
+    return this.#pageState;
+  }
+
+  setPageState(state: PageState): void {
+    this.#pageState = state;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * 注册与检索
+   * ---------------------------------------------------------------- */
+
+  get size(): number {
+    return this.#entries.size;
+  }
+
+  /**
+   * 注册一个 Block。
+   *
+   * **幂等**：同 ID 已存在时返回既有条目、不覆盖状态。
+   * 这样重复扫描同一片区域时不会把进度重置。
+   */
+  register(block: TranslationBlock): BlockEntry {
+    const existing = this.#entries.get(block.id);
+    if (existing) {
+      return existing;
+    }
+
+    const entry: BlockEntry = { block, status: 'UNTRANSLATED' };
+    this.#entries.set(block.id, entry);
+    this.#byElement.set(block.element, block.id);
+    return entry;
+  }
+
+  registerAll(blocks: readonly TranslationBlock[]): BlockEntry[] {
+    return blocks.map((block) => this.register(block));
+  }
+
+  /** 用新的分段结果整体替换（初次扫描、SPA 路由变化）。 */
+  replaceAll(blocks: readonly TranslationBlock[]): BlockEntry[] {
+    this.clear();
+    return this.registerAll(blocks);
+  }
+
+  get(blockId: string): BlockEntry | undefined {
+    return this.#entries.get(blockId);
+  }
+
+  has(blockId: string): boolean {
+    return this.#entries.has(blockId);
+  }
+
+  /** 按容器元素反查 Block（动态内容去重用）。 */
+  findByElement(element: Element): BlockEntry | undefined {
+    const blockId = this.#byElement.get(element);
+    return blockId === undefined ? undefined : this.#entries.get(blockId);
+  }
+
+  /**
+   * 按元素身份登记或更新一个 Block。
+   *
+   * 三种结果：
+   *   - `added`     —— 该容器此前未登记过
+   *   - `replaced`  —— 容器相同但文本变了，旧译文已失效，**重置为 UNTRANSLATED**
+   *   - `unchanged` —— 容器与文本都没变，**保持原状态**（不会把已翻译的推回未翻译）
+   *
+   * 后两种的区分是必要的：MutationObserver 会反复看到同一片 DOM，
+   * 若每次都当新内容处理，已完成的翻译会被无限重置。
+   */
+  upsert(block: TranslationBlock): UpsertResult {
+    const existingId = this.#byElement.get(block.element);
+    const existing = existingId === undefined ? undefined : this.#entries.get(existingId);
+
+    if (existing === undefined) {
+      this.#entries.set(block.id, { block, status: 'UNTRANSLATED' });
+      this.#byElement.set(block.element, block.id);
+      return 'added';
+    }
+
+    if (existing.block.text === block.text) {
+      return 'unchanged';
+    }
+
+    // 文本变了：旧译文与旧占位符绑定都已失效，整条换掉
+    this.#entries.delete(existing.block.id);
+    this.#entries.set(block.id, { block, status: 'UNTRANSLATED' });
+    this.#byElement.set(block.element, block.id);
+    return 'replaced';
+  }
+
+  all(): BlockEntry[] {
+    return [...this.#entries.values()];
+  }
+
+  byStatus(status: TranslationStatus): BlockEntry[] {
+    return this.all().filter((entry) => entry.status === status);
+  }
+
+  byStatuses(statuses: readonly TranslationStatus[]): BlockEntry[] {
+    const wanted = new Set(statuses);
+    return this.all().filter((entry) => wanted.has(entry.status));
+  }
+
+  /* ---------------------------------------------------------------- *
+   * 状态迁移
+   * ---------------------------------------------------------------- */
+
+  /** 通用状态迁移。ID 不存在时返回 `undefined`，不抛错。 */
+  setStatus(
+    blockId: string,
+    status: TranslationStatus,
+    patch?: Partial<Pick<BlockEntry, 'translation' | 'error'>>,
+  ): BlockEntry | undefined {
+    const entry = this.#entries.get(blockId);
+    if (!entry) {
+      return undefined;
+    }
+
+    entry.status = status;
+    if (patch?.translation !== undefined) {
+      entry.translation = patch.translation;
+    }
+    if (patch?.error !== undefined) {
+      entry.error = patch.error;
+    }
+    return entry;
+  }
+
+  markQueued(blockId: string): BlockEntry | undefined {
+    return this.setStatus(blockId, 'QUEUED');
+  }
+
+  markTranslating(blockId: string): BlockEntry | undefined {
+    return this.setStatus(blockId, 'TRANSLATING');
+  }
+
+  markTranslated(blockId: string, translation: string): BlockEntry | undefined {
+    return this.setStatus(blockId, 'TRANSLATED', { translation });
+  }
+
+  markFailed(blockId: string, error: string): BlockEntry | undefined {
+    return this.setStatus(blockId, 'FAILED', { error });
+  }
+
+  /** 把多个 Block 一起置为同一状态（Batch 级操作）。 */
+  markMany(blockIds: readonly string[], status: TranslationStatus): void {
+    for (const blockId of blockIds) {
+      this.setStatus(blockId, status);
+    }
+  }
+
+  /**
+   * 把 FAILED 条目重置为 UNTRANSLATED，返回被重置的 ID 列表。
+   *
+   * 供「重新翻译失败内容」使用（方案第 24.2 节）。
+   */
+  resetFailed(): string[] {
+    const ids: string[] = [];
+
+    for (const entry of this.#entries.values()) {
+      if (entry.status === 'FAILED') {
+        entry.status = 'UNTRANSLATED';
+        entry.error = undefined;
+        ids.push(entry.block.id);
+      }
+    }
+
+    return ids;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * 统计与清理
+   * ---------------------------------------------------------------- */
+
+  stats(): BlockStats {
+    const counts: Record<TranslationStatus, number> = {
+      UNTRANSLATED: 0,
+      QUEUED: 0,
+      TRANSLATING: 0,
+      TRANSLATED: 0,
+      FAILED: 0,
+    };
+
+    for (const entry of this.#entries.values()) {
+      counts[entry.status] += 1;
+    }
+
+    const total = this.#entries.size;
+    const settled = counts.TRANSLATED + counts.FAILED;
+
+    return {
+      total,
+      untranslated: counts.UNTRANSLATED,
+      queued: counts.QUEUED,
+      translating: counts.TRANSLATING,
+      translated: counts.TRANSLATED,
+      failed: counts.FAILED,
+      progress: total === 0 ? 0 : settled / total,
+    };
+  }
+
+  clear(): void {
+    this.#entries.clear();
+    // WeakMap 无法清空，直接换一个新实例
+    this.#byElement = new WeakMap<Element, string>();
+    this.#pageState = 'IDLE';
+  }
+}
+
+let sharedStore: PageStore | null = null;
+
+/** 取 content script 内的共享实例。 */
+export function getPageStore(): PageStore {
+  sharedStore ??= new PageStore();
+  return sharedStore;
+}
+
+/** 丢弃共享实例（页面重置或测试用）。 */
+export function resetPageStore(): void {
+  sharedStore = null;
+}

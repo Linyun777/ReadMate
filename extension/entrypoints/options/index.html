@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>设置 · ReadMate</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="options">
+      <header class="options__header">
+        <h1 class="options__title">伴读 · ReadMate</h1>
+        <p id="app-version" class="options__subtitle mono"></p>
+        <p class="options__subtitle">设置保存在浏览器本地，刷新后仍在。</p>
+      </header>
+
+      <section class="card">
+        <h2 class="card__title">服务</h2>
+
+        <label class="field" for="server-url">
+          <span class="field__label">FastAPI 服务地址</span>
+          <input
+            id="server-url"
+            class="field__input"
+            type="url"
+            placeholder="http://127.0.0.1:8000"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="field__hint">本地网关地址。翻译请求由扩展转发到这里。</span>
+        </label>
+
+        <div class="actions">
+          <button id="test-connection" class="btn" type="button">
+            测试连接
+          </button>
+          <span id="connection-status" class="inline-status" role="status"></span>
+        </div>
+      </section>
+
+
+      <section class="card">
+        <h2 class="card__title">模型服务</h2>
+
+        <p class="field__hint">
+          改这里就不必手工编辑 <code>server/.env</code>。
+          <strong>改完立即生效</strong>，不用重启服务。
+        </p>
+
+        <label class="field" for="llm-base-url">
+          <span class="field__label">接口地址（OpenAI 兼容）</span>
+          <input id="llm-base-url" class="field__input" type="url" spellcheck="false" />
+        </label>
+
+        <div class="field-row">
+          <label class="field" for="llm-model">
+            <span class="field__label">翻译 / 解释模型</span>
+            <input id="llm-model" class="field__input" spellcheck="false" />
+          </label>
+
+          <label class="field" for="llm-summary-model">
+            <span class="field__label">总结 / 笔记模型</span>
+            <input id="llm-summary-model" class="field__input" spellcheck="false" />
+          </label>
+        </div>
+
+        <label class="field" for="llm-api-key">
+          <span class="field__label">API Key</span>
+          <input
+            id="llm-api-key"
+            class="field__input"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+
+        <p id="llm-key-status" class="field__hint"></p>
+
+        <div class="actions">
+          <button id="save-llm" class="btn btn--primary" type="button">保存到服务端</button>
+          <button id="reload-llm" class="btn" type="button">重新读取</button>
+          <span id="llm-status" class="inline-status" role="status"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">翻译</h2>
+
+        <label class="field" for="target-language">
+          <span class="field__label">目标语言</span>
+          <input
+            id="target-language"
+            class="field__input"
+            type="text"
+            placeholder="zh-CN"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="field__hint">BCP 47 语言标签，如 <code>zh-CN</code>、<code>ja</code>。</span>
+        </label>
+
+        <label class="field" for="style">
+          <span class="field__label">翻译风格</span>
+          <select id="style" class="field__input">
+            <option value="natural">natural · 自然</option>
+            <option value="technical">technical · 技术</option>
+            <option value="academic">academic · 学术</option>
+            <option value="literal">literal · 直译</option>
+          </select>
+        </label>
+
+        <label class="field" for="display-mode">
+          <span class="field__label">默认显示模式</span>
+          <select id="display-mode" class="field__input">
+            <option value="bilingual">双语 · 原文 + 译文</option>
+            <option value="chinese">中文 · 只显示译文</option>
+            <option value="original">原文 · 不显示译文</option>
+          </select>
+        </label>
+
+        <div class="field-row">
+          <label class="field" for="input-price">
+            <span class="field__label">输入单价（元 / 百万 token）</span>
+            <input
+              id="input-price"
+              class="field__input"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+            />
+          </label>
+
+          <label class="field" for="output-price">
+            <span class="field__label">输出单价（元 / 百万 token）</span>
+            <input
+              id="output-price"
+              class="field__input"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+            />
+          </label>
+        </div>
+
+        <p class="field__hint">
+          填了单价，用量才会估算金额。<strong>不预设默认价</strong>——
+          价格随时会变，预设一个过时的数字比不显示更糟。
+          只填一边也可以（有些 Provider 只对输出计费）。
+        </p>
+
+        <p class="field__hint">
+          不提供「自动翻译」开关：它需要站点常驻权限（<code>&lt;all_urls&gt;</code>），
+          与当前「按需注入」的最小权限原则冲突。翻译由工具栏按钮触发。
+        </p>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">译文缓存</h2>
+
+        <dl class="stats">
+          <div class="stats__item">
+            <dt>条目数</dt>
+            <dd id="cache-count">—</dd>
+          </div>
+          <div class="stats__item">
+            <dt>估算体积</dt>
+            <dd id="cache-bytes">—</dd>
+          </div>
+          <div class="stats__item">
+            <dt>上限</dt>
+            <dd id="cache-limit">—</dd>
+          </div>
+        </dl>
+
+        <p class="field__hint">
+          缓存让同一段文字第二次出现时直接复用译文，刷新页面后仍然有效。
+          键含 provider / model / promptVersion，改 Prompt 或换模型后旧缓存自动失效。
+        </p>
+
+        <div class="actions">
+          <button id="clear-cache" class="btn btn--danger" type="button">清除缓存</button>
+          <button id="export-cache" class="btn" type="button">导出 JSON</button>
+          <button id="import-cache" class="btn" type="button">导入 JSON</button>
+          <input id="import-file" type="file" accept="application/json,.json" hidden />
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">用量</h2>
+
+        <dl class="stats">
+          <div class="stats__item">
+            <dt>调用次数</dt>
+            <dd id="usage-calls">—</dd>
+          </div>
+          <div class="stats__item">
+            <dt>输入 token</dt>
+            <dd id="usage-prompt">—</dd>
+          </div>
+          <div class="stats__item">
+            <dt>输出 token</dt>
+            <dd id="usage-completion">—</dd>
+          </div>
+          <div class="stats__item">
+            <dt>估算成本</dt>
+            <dd id="usage-cost">—</dd>
+          </div>
+        </dl>
+
+        <p id="usage-range" class="field__hint"></p>
+
+        <p class="field__hint">
+          由服务端记录（<code>server/.usage.jsonl</code>），跨重启保留。
+          只统计服务端成功拿到用量的调用；Provider 未返回 usage 的不计入。
+        </p>
+
+        <div class="actions">
+          <button id="refresh-usage" class="btn" type="button">
+            刷新用量
+          </button>
+          <button id="clear-usage" class="btn btn--danger" type="button">
+            清空用量
+          </button>
+        </div>
+      </section>
+
+      <section class="card card--muted">
+        <h2 class="card__title">关于 API Key</h2>
+        <p class="card__text">
+          扩展<strong>不保存</strong>任何 API Key。Key 只存在于本地 FastAPI 服务的
+          <code>.env</code> 文件里，浏览器端永远拿不到它。
+        </p>
+      </section>
+
+      <div class="actions actions--footer">
+        <button id="save" class="btn btn--primary" type="button">保存设置</button>
+        <button id="reset" class="btn" type="button">恢复默认</button>
+        <span id="status" class="inline-status" role="status"></span>
+      </div>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

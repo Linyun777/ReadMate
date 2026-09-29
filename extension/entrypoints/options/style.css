@@ -1,0 +1,211 @@
+@import "../../styles/tokens.css";
+
+/*
+ * Options 设置页（方案第 39 节）。
+ *
+ * 与其他界面的区别：这是一张**长表单**，所以重点是
+ * 「让用户知道自己改了什么、改完有没有生效」——
+ * 卡片之间留够距离，保存按钮吸底。
+ */
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--page);
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+/* ---------- 头部 ---------- */
+
+.options__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.options__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.options__subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---------- 卡片 ---------- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.card--muted {
+  background: var(--surface-sunken);
+}
+
+.card__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.card__text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---------- 字段 ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.field__input {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.field__input:hover {
+  border-color: var(--border-strong);
+}
+
+/* 聚焦时给一圈柔和的光晕——比只换边框色更容易注意到 */
+.field__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-subtle);
+}
+
+.field__hint code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+/* ---------- 数据展示 ---------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.stats__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.stats__item dt {
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
+/* 数值用等宽：多位数字对齐后好扫读 */
+.stats__item dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* ---------- 操作区 ---------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions--footer {
+  position: sticky;
+  bottom: 0;
+  align-items: center;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--border);
+  background: var(--page);
+}
+
+.inline-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.inline-status--error {
+  color: var(--danger);
+}
+
+/* 版本号跟副标题同一层次，但用等宽——它是个标识符，不是文案 */
+.options__subtitle.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-subtle);
+}

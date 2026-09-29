@@ -1,0 +1,119 @@
+name: CI
+
+# 三个任务分开跑，失败时能一眼看出是扩展、服务端还是端到端出的问题。
+#
+# 为什么不合并成一个 job：E2E 要装 Chromium（约 1 分钟），
+# 单元测试只要几秒。合并的话每次改一行注释都要等浏览器下载。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 只读权限——CI 不需要写仓库
+permissions:
+  contents: read
+
+jobs:
+  extension:
+    name: 扩展 · 检查与单测
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: 安装依赖
+        working-directory: extension
+        run: npm ci
+
+      - name: 代码检查
+        working-directory: extension
+        run: npm run lint
+
+      - name: 类型检查
+        working-directory: extension
+        run: npm run typecheck
+
+      - name: 单元测试
+        working-directory: extension
+        run: npm test
+
+      - name: 构建
+        working-directory: extension
+        run: npm run build
+
+  server:
+    name: 服务端 · 测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: server/requirements.txt
+
+      - name: 创建虚拟环境
+        run: python -m venv server/.venv
+
+      - name: 安装依赖
+        run: server/.venv/bin/pip install -r server/requirements.txt
+
+      - name: 测试
+        working-directory: server
+        run: .venv/bin/python -m pytest -q
+
+  e2e:
+    name: 端到端 · 真实浏览器
+    runs-on: ubuntu-latest
+    # 单测先过再跑 E2E——E2E 慢，没必要为必然失败的提交浪费它
+    needs: [extension, server]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: 安装扩展依赖
+        working-directory: extension
+        run: npm ci
+
+      # E2E 的服务端由 extension/e2e/start-server.mjs 启动，
+      # 它会在 server/.venv 里找 Python——所以这里必须建在同一位置。
+      - name: 创建服务端虚拟环境
+        run: |
+          python -m venv server/.venv
+          server/.venv/bin/pip install -r server/requirements.txt
+
+      - name: 安装 Chromium
+        working-directory: extension
+        run: npx playwright install --with-deps chromium
+
+      # 走 mock Provider，不发起真实模型请求，也不需要 API Key
+      - name: 端到端测试
+        working-directory: extension
+        run: npm run test:e2e
+
+      # CI 上 reporter 是 `github`（失败会直接标注在改动行上），
+      # 不生成 HTML 报告——所以这里上传的是 trace。
+      # `trace: 'on-first-retry'` 只在实际重试时录制，正是需要排查的那种失败。
+      - name: 失败时上传 trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: extension/test-results/
+          retention-days: 7

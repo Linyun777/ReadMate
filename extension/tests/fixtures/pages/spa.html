@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPA Route Testing</title>
+    <style>
+      body {
+        max-width: 680px;
+        margin: 40px auto;
+        padding: 0 20px;
+        font-family: Georgia, serif;
+        line-height: 1.7;
+        color: #20201e;
+      }
+      button {
+        margin-right: 8px;
+        padding: 6px 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Phase 11 用页面：模拟 SPA 前端路由。
+
+      点击按钮会 pushState 改写 URL 并原地替换内容——不会整页刷新。
+      这正是「路由变化 → 清理旧状态 → 重新分段」要处理的场景。
+
+      内容刻意做成两页文字完全不同，便于断言「旧译文已清除、新译文已生成」。
+    -->
+    <nav>
+      <button id="go-two" type="button">Page Two</button>
+    </nav>
+
+    <article id="view">
+      <h1 id="title">Page One</h1>
+      <p id="content">This is the first page of a single page application.</p>
+    </article>
+
+    <script>
+      document.querySelector('#go-two').addEventListener('click', () => {
+        history.pushState({}, '', '/page-two');
+        document.querySelector('#view').innerHTML =
+          '<h1 id="title">Page Two</h1>' +
+          '<p id="content">This is the second page, loaded without a full reload.</p>';
+      });
+    </script>
+  </body>
+</html>

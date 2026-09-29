@@ -1,0 +1,48 @@
+# NOTICE
+
+本文件记录本项目使用的第三方组件及其许可证归属。
+
+---
+
+## @mozilla/readability
+
+- **版本**：0.6.0
+- **许可证**：Apache License 2.0
+- **版权**：Copyright (c) 2010 Arc90 Inc
+- **仓库**：https://github.com/mozilla/readability
+- **用途**：阅读模式（Phase 15）的正文提取
+
+### 为什么需要这份声明
+
+Apache-2.0 第 4(c) 条要求：分发时必须**保留**作品中的版权、专利、商标与归属声明。
+该包自身**不含** `NOTICE` 文件，因此无需传播额外通知，但归属声明必须保留。
+
+### 上游许可证全文
+
+Apache License, Version 2.0 —— 全文见
+<https://www.apache.org/licenses/LICENSE-2.0>，
+或安装依赖后查看 `extension/node_modules/@mozilla/readability/LICENSE.md`。
+
+### 使用方式
+
+仅使用其公开 API：
+
+```ts
+import { Readability } from '@mozilla/readability';
+```
+
+**未修改**该库源码。构建时由打包器内联进扩展产物。
+
+### 分发注意
+
+**以源码形式分发**（本仓库的情形）时，保留本文件即满足归属要求。
+
+**若将来把构建产物（`.output/`）对外发布**——例如上架扩展商店——
+还需把 Apache-2.0 许可证**全文**随产物一并提供
+（放进扩展的 `public/` 目录，或发布页附上）。
+
+---
+
+## 其余依赖
+
+其余运行时依赖的许可证见各自的 `package.json`。当前没有其他需要额外归属声明的组件。

@@ -1,0 +1,15 @@
+# 统一用 LF 检出。
+#
+# 不设的话 Windows 上 git 可能按 core.autocrlf 转成 CRLF，
+# 于是 diff 里出现整文件级别的换行差异，看不出真正的改动。
+# 本项目是 JS / Python，两端都吃 LF。
+* text=auto eol=lf
+
+# 二进制文件不做换行处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

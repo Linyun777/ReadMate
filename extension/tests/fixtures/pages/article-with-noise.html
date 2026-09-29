@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Why Streaming Matters · Example Blog</title>
+  </head>
+  <body>
+    <!--
+      Phase 15 用页面：**带噪声的长文章**。
+
+      与 long-article.html 的区别：那个页面只有正文，这个页面有完整的
+      导航 / 侧栏 / 页脚 / 推荐位。Readability 的价值就在于把这些剥掉——
+      没有噪声就测不出剥离效果。
+    -->
+    <div role="navigation" aria-label="Site">
+      <a href="/">Skip to content</a>
+      <a href="/archive">Archive</a>
+      <a href="/about">About</a>
+    </div>
+
+    <aside class="sidebar">
+      <h2>Related posts</h2>
+      <ul>
+        <li><a href="/a">Caching strategies for translation</a></li>
+        <li><a href="/b">Retry policies that actually work</a></li>
+      </ul>
+    </aside>
+
+    <main>
+      <article>
+        <h1>Why Streaming Matters</h1>
+
+        <p>
+          Waiting for a full batch before rendering anything makes a translation feature feel slow
+          even when the total latency is unchanged. Users tolerate a slow answer far better when it
+          arrives incrementally, and the first paragraph is what they actually look at.
+        </p>
+
+        <p>
+          The mechanism is straightforward: the model streams JSON, the server extracts each
+          complete array element as soon as it closes, and the extension validates that element
+          before rendering it. Nothing partial ever reaches the page, because a half-written object
+          cannot be validated.
+        </p>
+
+        <p>
+          There is a subtlety worth calling out. Once items are written to the store as they arrive,
+          a later failure no longer means the whole batch failed. Some items may already be on
+          screen. Retrying the batch from scratch would re-translate them, wasting tokens and
+          overwriting content the user is already reading.
+        </p>
+
+        <p>
+          The fix is to filter the retry payload down to the items that have not been delivered yet.
+          That keeps retries cheap and keeps rendered output stable, at the cost of a slightly more
+          involved bookkeeping step in the queue.
+        </p>
+
+        <p>
+          Streaming also changes how errors surface. A mid-stream failure produces a partial result
+          plus an error, rather than a clean failure. The caller has to decide what to keep. Keeping
+          what arrived is almost always the right call, since those items passed validation
+          independently.
+        </p>
+
+        <p>
+          None of this is complicated, but all of it is easy to get subtly wrong. The tests that
+          matter most are the ones that assert intermediate state rather than final state, because
+          final state looks identical whether or not streaming actually happened.
+        </p>
+      </article>
+    </main>
+
+    <aside class="newsletter">
+      <h2>Subscribe to the newsletter</h2>
+      <p>Get new posts by email. No spam, unsubscribe anytime.</p>
+    </aside>
+
+    <footer>
+      <p>© 2026 Example Blog. All rights reserved.</p>
+      <p>Privacy policy · Terms of service</p>
+    </footer>
+  </body>
+</html>

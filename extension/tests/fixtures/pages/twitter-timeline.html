@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Home / X</title>
+  </head>
+  <body>
+    <!--
+      Phase 14 用页面：复刻 X（Twitter）的布局骨架。
+
+      关键结构（决定适配器行为）：
+        - 左侧导航 [role="navigation"]  → 不该被翻译
+        - 主列     [data-testid="primaryColumn"] → 只翻这里
+        - 右侧栏   [data-testid="sidebarColumn"] → 不该被翻译
+
+      真实站点无法在 E2E 里访问（网络受限 + 登录墙），所以用复刻结构测「规则对不对」。
+    -->
+    <div id="react-root">
+      <div role="banner">
+        <h1>X</h1>
+      </div>
+
+      <div role="navigation" aria-label="Primary">
+        <a href="/home">Home</a>
+        <a href="/explore">Explore</a>
+        <a href="/notifications">Notifications</a>
+      </div>
+
+      <main>
+        <div data-testid="primaryColumn">
+          <h2>Home</h2>
+
+          <article data-testid="tweet">
+            <div data-testid="User-Name">
+              <span>Ada Lovelace</span>
+              <span>@ada</span>
+            </div>
+            <div data-testid="tweetText">
+              Just shipped the streaming translation pipeline. Rendering each paragraph as it
+              arrives instead of waiting for the whole batch.
+            </div>
+            <div role="group">
+              <button type="button">Reply</button>
+              <button type="button">Repost</button>
+            </div>
+          </article>
+
+          <article data-testid="tweet">
+            <div data-testid="User-Name">
+              <span>Grace Hopper</span>
+              <span>@grace</span>
+            </div>
+            <div data-testid="tweetText">
+              The queue keeps concurrency at three and degrades to single-item retries when a
+              batch fails.
+            </div>
+            <div role="group">
+              <button type="button">Reply</button>
+            </div>
+          </article>
+        </div>
+
+        <div data-testid="sidebarColumn">
+          <h2>Trends</h2>
+          <div>Something trending in Technology</div>
+          <div>Who to follow</div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,308 @@
+@import "../../styles/tokens.css";
+
+/*
+ * Side Panel —— 常驻控制台（方案第 83 节）。
+ *
+ * 与 Popup 的区别：这个界面会**一直开着**，所以更克制——
+ * 少用色块，多用间距与分隔线；数据用等宽字体对齐。
+ */
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--page);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px;
+}
+
+/* ---------- 头部 ---------- */
+
+.panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.panel__page-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 状态 ---------- */
+
+.panel__status {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  word-break: break-word;
+  transition: border-color var(--duration) var(--ease-out);
+}
+
+/* ---------- 区块 ---------- */
+
+.panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel__label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.panel__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.panel__hint--cost:not(:empty) {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.panel__wide {
+  width: 100%;
+}
+
+/* ---------- 主操作 ---------- */
+
+.panel__actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.panel__actions .btn {
+  padding: 9px 14px;
+}
+
+/* ---------- 分段控件（滑动药丸）---------- */
+
+.segmented {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.segmented__legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.segmented__track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+/* 滑动的选中块，见 popup/style.css 的说明 */
+.segmented__track::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc((100% - 6px - 4px) / 3);
+  height: calc(100% - 6px);
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--duration) var(--ease-spring);
+}
+
+.segmented__track:has(input[value="original"]:checked)::before {
+  transform: translateX(0);
+}
+
+.segmented__track:has(input[value="bilingual"]:checked)::before {
+  transform: translateX(calc(100% + 2px));
+}
+
+.segmented__track:has(input[value="chinese"]:checked)::before {
+  transform: translateX(calc(200% + 4px));
+}
+
+.segmented__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border-radius: calc(var(--radius-sm) - 2px);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+/*
+ * radio 本体：铺满整个标签、完全透明。
+ *
+ * 不写成 1px + pointer-events:none 那种「视觉隐藏」——
+ * 那样点击只能靠 label 代理，**自动化测试点不到**（Playwright 的
+ * check() 需要元素可见且能接收点击）。
+ * 铺满 + opacity:0 既保留了原生语义，又能被点击与聚焦。
+ */
+.segmented__item input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  /* 在滑动块之上，保证点击落在 input 上 */
+  z-index: 1;
+}
+
+.segmented__item:has(input:checked) {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.segmented__item:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.segmented__item:hover:not(:has(input:checked)) {
+  color: var(--text);
+}
+
+/* ---------- 总结结果 ---------- */
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* 淡入 + 轻微上移：比生硬的显示/隐藏更容易感知到「内容来了」 */
+  animation: fade-rise var(--duration) var(--ease-out);
+}
+
+/* `display: flex` 会盖掉浏览器默认的 [hidden]，显式兜住 */
+.summary[hidden] {
+  display: none;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.summary__gist {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+.summary__points {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.summary__points li + li {
+  margin-top: 4px;
+}
+
+/* ---------- 次级入口 ---------- */
+
+.panel__links {
+  display: flex;
+  gap: 4px;
+}
+
+.panel__link {
+  flex: 1;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.panel__link:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.panel__link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- 页脚（用量 + 缓存）---------- */
+
+.panel__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.panel__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

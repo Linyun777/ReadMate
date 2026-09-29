@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Long Article for Viewport Testing</title>
+    <style>
+      body {
+        max-width: 680px;
+        margin: 40px auto;
+        padding: 0 20px;
+        font-family: Georgia, serif;
+        line-height: 1.7;
+        color: #20201e;
+      }
+      p {
+        margin: 0 0 1.2em;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Phase 9 用页面：故意做得很长，让大部分内容落在「视口 + 前瞻区」之外。
+
+      验收标准是「未进入视口的内容不产生请求」，所以本页必须有相当一部分
+      内容在首屏之外——否则测不出 lazy 行为。
+
+      每段都含足够的真实词汇，避免被「无需翻译」规则过滤掉。
+    -->
+    <article>
+      <h1>Long Article for Viewport Testing</h1>
+
+      <p id="para-01">Retrieval augmented generation combines a language model with an external knowledge store. The model retrieves relevant passages before answering, which grounds its output in verifiable sources.</p>
+      <p id="para-02">Chunking strategy matters more than most teams expect. Chunks that are too small lose context, while chunks that are too large dilute the signal that the retriever is trying to match.</p>
+      <p id="para-03">Embedding models compress text into dense vectors. The distance between two vectors approximates semantic similarity, but only within the distribution the model was trained on.</p>
+      <p id="para-04">Hybrid search blends lexical matching with vector similarity. Lexical matching catches exact identifiers, while vectors handle paraphrase and synonymy.</p>
+      <p id="para-05">Reranking is a second pass that scores candidate passages against the query. It is slower than retrieval but far more accurate, so it is usually applied to a shortlist.</p>
+      <p id="para-06">Evaluation of retrieval quality is notoriously difficult. Recall at k measures whether the right passage appears at all, while mean reciprocal rank measures how high it appears.</p>
+      <p id="para-07">Prompt injection remains an open problem. When retrieved content is concatenated into the prompt, a hostile document can attempt to override the system instructions.</p>
+      <p id="para-08">Caching embeddings reduces cost substantially. Most documents do not change between requests, so recomputing their vectors wastes both time and money.</p>
+      <p id="para-09">Context windows have grown quickly, but longer context is not a substitute for retrieval. Attention degrades over long inputs, and irrelevant text actively harms accuracy.</p>
+      <p id="para-10">Observability for retrieval systems means logging the query, the retrieved identifiers, and the final answer together. Without that linkage, failures cannot be diagnosed.</p>
+      <p id="para-11">Latency budgets force trade-offs. Every additional retrieval stage adds milliseconds, and users notice delays beyond roughly two seconds.</p>
+      <p id="para-12">Metadata filtering narrows the candidate set before similarity search runs. Restricting by date, language, or tenant is usually far cheaper than searching everything.</p>
+      <p id="para-13">Fine tuning is sometimes proposed as a replacement for retrieval, but the two solve different problems. Fine tuning changes behaviour, while retrieval supplies facts.</p>
+      <p id="para-14">Document parsing is an underrated source of error. Tables, footnotes, and multi-column layouts are frequently mangled before they ever reach the model.</p>
+      <p id="para-15">Streaming responses improve perceived latency even when total latency is unchanged. Users tolerate a slow answer far better when it arrives incrementally.</p>
+      <p id="para-16">Guardrails should be layered rather than singular. Input filtering, output filtering, and structural validation each catch a different class of failure.</p>
+      <p id="para-17">Cost modelling requires tracking tokens in both directions. Input tokens dominate for retrieval heavy workloads, while output tokens dominate for generation heavy ones.</p>
+      <p id="para-18">Versioning prompts is as important as versioning code. A silent prompt change alters system behaviour, and without a version identifier the change is invisible.</p>
+      <p id="para-19">Fallback behaviour deserves explicit design. When the model is unavailable, the system should degrade to a defined state rather than failing unpredictably.</p>
+      <p id="para-20">Human review remains valuable for high stakes output. Automated evaluation correlates with human judgement, but the correlation is far from perfect.</p>
+      <p id="para-21">Index freshness determines answer quality for time sensitive questions. A stale index confidently returns outdated information.</p>
+      <p id="para-22">Multi tenant systems must isolate retrieval carefully. A filter bug that leaks one tenant's documents into another's results is a serious security incident.</p>
+      <p id="para-23">Compression techniques reduce storage cost but introduce approximation error. The trade-off should be measured against the retrieval metric that actually matters.</p>
+      <p id="para-24">Iteration speed dominates long run outcomes. A team that can evaluate a change in an hour will outperform one that needs a week, even with a worse initial design.</p>
+    </article>
+  </body>
+</html>

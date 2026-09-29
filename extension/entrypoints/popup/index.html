@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>伴读 · ReadMate</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup__header">
+        <h1 class="popup__title">伴读 · ReadMate</h1>
+        <p id="status" class="popup__status" role="status">就绪</p>
+      </header>
+
+      <div class="popup__actions">
+        <button id="translate" class="btn btn--primary" type="button">翻译当前页面</button>
+        <button id="restore" class="btn" type="button" disabled>恢复原文</button>
+      </div>
+
+      <fieldset class="segmented">
+        <legend class="segmented__legend">显示模式</legend>
+        <div class="segmented__track">
+          <label class="segmented__item">
+            <input type="radio" name="mode" value="original" />
+            <span>原文</span>
+          </label>
+          <label class="segmented__item">
+            <input type="radio" name="mode" value="bilingual" checked />
+            <span>双语</span>
+          </label>
+          <label class="segmented__item">
+            <input type="radio" name="mode" value="chinese" />
+            <span>中文</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <nav class="popup__links">
+        <button id="open-reader" class="popup__link" type="button">阅读模式</button>
+        <button id="open-sidebar" class="popup__link" type="button">侧边栏</button>
+        <button id="open-options" class="popup__link" type="button">设置</button>
+      </nav>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

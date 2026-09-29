@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nested Inline Elements</title>
+  </head>
+  <body>
+    <!--
+      Phase 77 fixture：**深层嵌套的 inline 元素**。
+
+      这是占位符系统最核心的场景（方案第 86.1 节）：
+        - 成对占位符 <0>...</0> 包裹 inline 元素
+        - 原子占位符 <0/> 标记 <br> 与内联图片
+      嵌套越深，越容易在回填时错位或丢失闭合标签。
+
+      每个段落都刻意做不同形态，便于定位是哪一类嵌套出了问题。
+    -->
+    <article>
+      <h1>Nested Inline Elements</h1>
+
+      <p id="simple-nest">
+        A sentence with <strong>bold text</strong> in the middle of it.
+      </p>
+
+      <p id="deep-nest">
+        Deeper nesting with <strong>bold <em>and italic <a href="/docs">and a link</a></em></strong>
+        wrapped inside.
+      </p>
+
+      <p id="mixed-inline">
+        Mixed inline tags: <code>inline code</code>, <span>a span</span>, <mark>highlighted</mark>,
+        and <abbr title="Application Programming Interface">API</abbr>.
+      </p>
+
+      <p id="leading-inline">
+        <strong>Bold at the very start</strong> and then normal text follows.
+      </p>
+
+      <p id="trailing-inline">
+        Normal text first and then <strong>bold at the very end</strong>
+      </p>
+
+      <p id="only-inline">
+        <strong>Nothing but bold</strong>
+      </p>
+
+      <p id="adjacent-inline">
+        Adjacent tags <strong>bold</strong><em>italic</em> with no space between them.
+      </p>
+
+      <p id="line-break">
+        First line<br />Second line after a break<br />Third line.
+      </p>
+
+      <p id="inline-image">
+        Text before an image <img src="/icon.png" alt="icon" /> and text after it.
+      </p>
+
+      <p id="nested-link-code">
+        A <a href="/api">link containing <code>code</code></a> inside it.
+      </p>
+
+      <ul id="nested-list">
+        <li>Item with <strong>bold</strong> inside</li>
+        <li>
+          Item with a nested list
+          <ul>
+            <li>Nested item <em>with emphasis</em></li>
+          </ul>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

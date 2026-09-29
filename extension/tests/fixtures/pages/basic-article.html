@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Engineering in Practice</title>
+    <style>
+      body {
+        max-width: 680px;
+        margin: 40px auto;
+        padding: 0 20px;
+        font-family: Georgia, serif;
+        line-height: 1.7;
+        color: #20201e;
+      }
+      nav a {
+        margin-right: 12px;
+      }
+      pre {
+        padding: 12px;
+        background: #f1efe8;
+        border-radius: 6px;
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #d8d6d0;
+        padding: 6px 10px;
+        text-align: left;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 导航：Phase 9 的「导航块优先」排序会用到 -->
+    <nav>
+      <a href="/docs">Documentation</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/blog">Blog</a>
+    </nav>
+
+    <article>
+      <h1>AI Engineering in Practice</h1>
+
+      <!-- 纯文本段落：不含 inline 标记，应退化为普通整段翻译 -->
+      <p id="plain-paragraph">
+        Building reliable AI products requires more than prompt engineering. Teams must treat model
+        behaviour as a system property, measure it continuously, and design fallbacks for the cases
+        where the model is wrong.
+      </p>
+
+      <!-- 含 inline 标记的段落：Phase 2 占位符构建的核心测试对象 -->
+      <p id="inline-demo">
+        AI engineering is changing <strong>software development</strong> rapidly. Read the
+        <a href="/docs/getting-started">documentation</a> before you start.
+      </p>
+
+      <h2>Common failure modes</h2>
+
+      <ul id="list-demo">
+        <li>Silent truncation of long inputs</li>
+        <li>Inconsistent formatting between calls</li>
+        <li>Hallucinated identifiers in generated code</li>
+      </ul>
+
+      <h2>Baseline configuration</h2>
+
+      <!-- 代码块：方案第 9.3 节要求默认保留原文，不翻译 -->
+      <pre id="code-demo"><code>const client = new OpenAI({
+  baseURL: process.env.LLM_BASE_URL,
+});</code></pre>
+
+      <h2>Model comparison</h2>
+
+      <table id="table-demo">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Context</th>
+            <th>Best for</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>deepseek-chat</td>
+            <td>64k</td>
+            <td>General translation</td>
+          </tr>
+          <tr>
+            <td>gpt-5-mini</td>
+            <td>128k</td>
+            <td>Long articles</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 隐藏节点：不应参与翻译 -->
+      <p class="hidden" id="hidden-demo">This paragraph must never be translated.</p>
+
+      <!-- 无需翻译的文本：纯数字 / URL / 邮箱 / Emoji（方案第 9.4 节） -->
+      <p id="skip-demo">2026 https://example.com hello@example.com 42 → +</p>
+
+      <!--
+        短表意文字标题：脚本感知的长度规则不应把它误杀。
+        用假名而非汉字——目标语言是中文时，汉字会被「已是目标语言」规则跳过，
+        那样就测不出长度规则了。
+      -->
+      <h2 id="short-kana">ニュース</h2>
+    </article>
+  </body>
+</html>
