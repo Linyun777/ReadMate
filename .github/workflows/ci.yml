@@ -91,6 +91,10 @@ jobs:
         working-directory: extension
         run: npm ci
 
+      - name: 构建扩展
+        working-directory: extension
+        run: npm run build
+
       # E2E 的服务端由 extension/e2e/start-server.mjs 启动，
       # 它会在 server/.venv 里找 Python——所以这里必须建在同一位置。
       - name: 创建服务端虚拟环境
