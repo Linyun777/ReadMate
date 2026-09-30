@@ -20,6 +20,10 @@ const LONG_URL = 'http://127.0.0.1:8000/long-article.html';
 /** 长页面的 Block 总数：1 个标题 + 24 个段落 */
 const TOTAL_BLOCKS = 25;
 
+/** 更长的页面（1 个 h1 + 100 个段落）：跳到底时会跳过几十段，用来测「续翻」 */
+const LARGE_URL = 'http://127.0.0.1:8000/large-page.html';
+const LARGE_BLOCKS = 101;
+
 const VIEWPORT = { width: 900, height: 720 };
 
 interface Stats {
@@ -131,6 +135,69 @@ test.describe('Phase 9 · Viewport-first + Lazy', () => {
     // 第二次请求只带底部的内容，不重复首屏
     expect(afterScroll.translateItems).toBeGreaterThan(firstScreen.translateItems);
     expect(afterScroll.translateItems).toBeLessThanOrEqual(TOTAL_BLOCKS);
+
+    await popup.close();
+    await fixture.close();
+  });
+
+  test('⭐ 一次跳到页面底部，中间没进过视口的内容也会被续翻', async ({ context, extensionId }) => {
+    const fixture = await context.newPage();
+    await fixture.setViewportSize(VIEWPORT);
+    await fixture.goto(LARGE_URL);
+
+    const popup = await openPopup(context, extensionId);
+    await activateFixtureTab(context, LARGE_URL);
+    await popup.locator('#translate').click();
+
+    // 先确认这确实是个「翻不完」的长页面：底部还在等滚动
+    await expect(popup.locator('#status')).toContainText('其余滚动时自动翻译', {
+      timeout: 60_000,
+    });
+    await expect(fixture.locator('#para-100 + [data-ai-translator="true"]')).toHaveCount(0);
+
+    // 一次性跳到底（等同用户按 End / 拖滚动条）。
+    // `IntersectionObserver` 只对**真正相交过**的元素回调，中途被跳过的
+    // 那几十段从来没相交过——光靠滚动事件是补不回来的。
+    await fixture.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+
+    // 剩余的一次性续翻完：状态里不再有「其余滚动时自动翻译」
+    await expect(popup.locator('#status')).toContainText(
+      `已翻译 ${LARGE_BLOCKS}/${LARGE_BLOCKS} 段`,
+      { timeout: 60_000 },
+    );
+
+    await popup.close();
+    await fixture.close();
+  });
+
+  test('⭐ 跳到底续翻不会重复请求首屏内容', async ({ context, extensionId }) => {
+    const fixture = await context.newPage();
+    await fixture.setViewportSize(VIEWPORT);
+    await fixture.goto(LARGE_URL);
+    await resetStats(fixture);
+
+    const popup = await openPopup(context, extensionId);
+    await activateFixtureTab(context, LARGE_URL);
+    await popup.locator('#translate').click();
+    await expect(popup.locator('#status')).toContainText('已翻译', { timeout: 60_000 });
+
+    const firstScreen = await readStats(fixture);
+
+    await fixture.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await expect(popup.locator('#status')).toContainText(
+      `已翻译 ${LARGE_BLOCKS}/${LARGE_BLOCKS} 段`,
+      { timeout: 60_000 },
+    );
+
+    const afterBottom = await readStats(fixture);
+
+    expect(afterBottom.translateItems).toBeGreaterThan(firstScreen.translateItems);
+    // 续翻只带「还没翻的」；若把已排队的又发一遍，总数会超过整页块数
+    expect(afterBottom.translateItems).toBeLessThanOrEqual(LARGE_BLOCKS);
 
     await popup.close();
     await fixture.close();

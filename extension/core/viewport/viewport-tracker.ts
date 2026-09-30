@@ -14,6 +14,16 @@
  *
  * 前瞻区（lookahead）的存在理由：只翻严格视口内的内容会让首屏下方一屏
  * 保持英文，滚动时一屏一屏地跳，体验很差。提前一屏一起翻就平滑了。
+ *
+ * ## 滚到底续翻（第 66 节的补充）
+ *
+ * `IntersectionObserver` 只对**真正相交过**的元素回调。用户按 `End`
+ * 或拖滚动条一次到底时，中间十几屏从未相交——实测一篇长文（整页 219 段、
+ * 首屏 72 段、页面高 20 屏）：**一次跳到底只多翻 7 段，剩下 140 段（64%）
+ * 永远不翻**。而「滚到底」本身就是用户在说「我要看完」。
+ *
+ * 所以到达底部时把剩余内容一次性交给 `onEnter`——**不自己发请求**，
+ * 调度仍然只有 `core/queue` 一个点（铁律 6）。
  */
 
 import type { TranslationBlock } from '@/shared/types';
@@ -35,6 +45,20 @@ export type ObserverFactory = (
   options: { rootMargin: string },
 ) => ObserverLike;
 
+/**
+ * 滚动位置指标。
+ *
+ * 抽成可注入的，是因为 jsdom 不做布局——`scrollTop` / `scrollHeight` 全是 0，
+ * 靠真实环境测不出「到底」这件事。
+ */
+export interface ScrollMetrics {
+  /** 已滚过的距离 */
+  scrollTop: number;
+  viewportHeight: number;
+  /** 文档总高 */
+  scrollHeight: number;
+}
+
 export interface ViewportTrackerOptions {
   /** 视口之外再提前多少屏开始翻译。默认 1 */
   lookaheadScreens?: number;
@@ -44,6 +68,16 @@ export interface ViewportTrackerOptions {
   getViewportHeight?: () => number;
   /** 观察器工厂。默认用真实 `IntersectionObserver` */
   createObserver?: ObserverFactory;
+  /**
+   * 滚到页面底部时，把**剩余未翻译的内容一次性排队**。默认开启。
+   *
+   * 关掉它 = 退回「只翻相交过的内容」，即用户必须逐屏滚过整页。
+   */
+  continueAtBottom?: boolean;
+  /** 距底部多少像素内算「到底」。默认取前瞻区一屏 */
+  bottomThresholdPx?: number;
+  /** 读滚动指标。默认读真实 `document`；测试注入 */
+  getScrollMetrics?: () => ScrollMetrics;
 }
 
 /** 默认前瞻屏数（方案第 65 节的「附近区域」） */
@@ -52,11 +86,25 @@ export const DEFAULT_LOOKAHEAD_SCREENS = 1;
 /** 默认收集窗口。滚动时的 IntersectionObserver 回调很碎，需要合并 */
 export const DEFAULT_FLUSH_DELAY_MS = 150;
 
+/** 默认开启「滚到底续翻」 */
+export const DEFAULT_CONTINUE_AT_BOTTOM = true;
+
 const FALLBACK_VIEWPORT_HEIGHT = 800;
 
 function defaultViewportHeight(): number {
   const height = globalThis.innerHeight;
   return typeof height === 'number' && height > 0 ? height : FALLBACK_VIEWPORT_HEIGHT;
+}
+
+function readScrollMetrics(viewportHeight: () => number): ScrollMetrics {
+  // `scrollingElement` 在标准模式下就是 `html`；老实现里是 `body`
+  const scroller = document.scrollingElement ?? document.documentElement;
+
+  return {
+    scrollTop: scroller.scrollTop,
+    viewportHeight: viewportHeight(),
+    scrollHeight: scroller.scrollHeight,
+  };
 }
 
 function defaultObserverFactory(
@@ -89,6 +137,9 @@ export class ViewportTracker {
   readonly #flushDelayMs: number;
   readonly #getViewportHeight: () => number;
   readonly #createObserver: ObserverFactory;
+  readonly #continueAtBottom: boolean;
+  readonly #bottomThresholdPx: number;
+  readonly #getScrollMetrics: (() => ScrollMetrics) | null;
 
   #observer: ObserverLike | null = null;
   #onEnter: ((blocks: TranslationBlock[]) => void) | null = null;
@@ -104,12 +155,20 @@ export class ViewportTracker {
   #pending = new Map<string, TranslationBlock>();
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** 到底续翻是否处于「已武装」状态（离开底部后重新武装） */
+  #armedForBottom = true;
+  #scrollHandler: (() => void) | null = null;
+
   constructor(options: ViewportTrackerOptions = {}) {
     this.#getViewportHeight = options.getViewportHeight ?? defaultViewportHeight;
     this.#lookaheadPx =
       this.#getViewportHeight() * (options.lookaheadScreens ?? DEFAULT_LOOKAHEAD_SCREENS);
     this.#flushDelayMs = Math.max(0, options.flushDelayMs ?? DEFAULT_FLUSH_DELAY_MS);
     this.#createObserver = options.createObserver ?? defaultObserverFactory;
+    this.#continueAtBottom = options.continueAtBottom ?? DEFAULT_CONTINUE_AT_BOTTOM;
+    this.#getScrollMetrics = options.getScrollMetrics ?? null;
+    // 阈值取前瞻区一屏：下方一屏内已经没有任何内容了，就算到底
+    this.#bottomThresholdPx = options.bottomThresholdPx ?? this.#lookaheadPx;
   }
 
   /** 前瞻区高度（像素）。视口内 + 这之外的 `lookaheadPx` 都算「附近」 */
@@ -158,6 +217,8 @@ export class ViewportTracker {
     for (const element of this.#byElement.keys()) {
       this.#observer.observe(element);
     }
+
+    this.#watchBottom();
   }
 
   /** 停止追踪并清掉待发缓冲。 */
@@ -172,6 +233,7 @@ export class ViewportTracker {
     this.#onEnter = null;
     this.#byElement.clear();
     this.#pending.clear();
+    this.#unwatchBottom();
   }
 
   /** 不再追踪某个 Block（翻译完成后调用，省掉无意义的回调）。 */
@@ -237,5 +299,82 @@ export class ViewportTracker {
     }
 
     this.#onEnter?.(blocks);
+  }
+
+  /**
+   * 开始监听「滚到底」。
+   *
+   * 装好后**立刻查一次**：用户可能本来就停在底部（上一轮已经翻到底、
+   * 页面又刚好长高了一点），那就不必等他再滚一下。
+   * 首次加载时这次查询会被 `#checkBottom` 的 `scrollTop` 判据挡掉。
+   */
+  #watchBottom(): void {
+    if (!this.#continueAtBottom) {
+      return;
+    }
+
+    if (this.#scrollHandler === null) {
+      this.#scrollHandler = () => this.#checkBottom();
+      globalThis.addEventListener('scroll', this.#scrollHandler, { passive: true });
+    }
+
+    this.#checkBottom();
+  }
+
+  #unwatchBottom(): void {
+    if (this.#scrollHandler !== null) {
+      globalThis.removeEventListener('scroll', this.#scrollHandler);
+      this.#scrollHandler = null;
+    }
+
+    // 重新武装：下一次 start（多半是 DOM 变动触发的重建）还能再续翻一轮
+    this.#armedForBottom = true;
+  }
+
+  /**
+   * 已经滚到页面底部的话，把**剩余全部**交给 `onEnter`。
+   *
+   * 边沿触发：到底排一次；离开底部（多半是页面又长长了）才重新武装。
+   * 重复排不会造成重复请求——调度是 `core/queue` 的事，而
+   * `PageController.#handleEnter` 只收状态仍是 `UNTRANSLATED` 的 Block
+   * （铁律 6：这里不自带任何并发）。
+   */
+  #checkBottom(): void {
+    const { scrollTop, viewportHeight, scrollHeight } = this.#metrics();
+
+    // `scrollTop > 0` 一句话挡掉两件事，所以不需要额外的「用户滚动过没有」状态：
+    //   1. 页面刚打开、懒加载的图与区块还没把高度撑起来——此时
+    //      「已经在底部」天然成立，据此全排就等于整页翻译，lazy 的收益全丢
+    //   2. macOS 橡皮筋滚动这类「事件发了但其实没滚动」的情况
+    // 真滚到底时 scrollTop 必然远大于 0，不受影响。
+    if (scrollTop <= 0) {
+      return;
+    }
+
+    const atBottom = scrollTop >= scrollHeight - viewportHeight - this.#bottomThresholdPx;
+
+    if (!atBottom) {
+      this.#armedForBottom = true;
+      return;
+    }
+
+    if (!this.#armedForBottom) {
+      return;
+    }
+    this.#armedForBottom = false;
+
+    for (const group of this.#byElement.values()) {
+      for (const block of group) {
+        this.#pending.set(block.id, block);
+      }
+    }
+
+    if (this.#pending.size > 0) {
+      this.#scheduleFlush();
+    }
+  }
+
+  #metrics(): ScrollMetrics {
+    return this.#getScrollMetrics?.() ?? readScrollMetrics(this.#getViewportHeight);
   }
 }

@@ -6,6 +6,7 @@ import {
   type ObserverEntryLike,
   type ObserverFactory,
   type ObserverLike,
+  type ScrollMetrics,
   ViewportTracker,
 } from './viewport-tracker';
 
@@ -365,5 +366,210 @@ describe('ViewportTracker · 拆大块（一个容器多个 Block）', () => {
 
     tracker.release(blockB);
     expect(fake.unobserved).toEqual([element]);
+  });
+});
+
+describe('ViewportTracker · 滚到底续翻', () => {
+  /** 可变滚动状态：测试里改 `state` 再派发 scroll 事件。 */
+  function makeScroller(overrides: Partial<ScrollMetrics> = {}) {
+    const state: ScrollMetrics = {
+      scrollTop: 0,
+      viewportHeight: VIEWPORT_HEIGHT,
+      // 20 屏高——和实测那篇长文的量级一致（14297px / 720px）
+      scrollHeight: VIEWPORT_HEIGHT * 20,
+      ...overrides,
+    };
+
+    return { state, read: (): ScrollMetrics => ({ ...state }) };
+  }
+
+  function makeBottomTracker(
+    fake: ReturnType<typeof makeFakeObserver>,
+    scroller: ReturnType<typeof makeScroller>,
+    overrides: { continueAtBottom?: boolean; bottomThresholdPx?: number } = {},
+  ): ViewportTracker {
+    return new ViewportTracker({
+      getViewportHeight: () => VIEWPORT_HEIGHT,
+      createObserver: fake.factory,
+      flushDelayMs: 0,
+      getScrollMetrics: scroller.read,
+      ...overrides,
+    });
+  }
+
+  /** 监听挂在 `globalThis` 上，所以这里派发真实事件。 */
+  function scrollEvent(): void {
+    globalThis.dispatchEvent(new Event('scroll'));
+  }
+
+  /** 滚到「贴底」。 */
+  function toBottom(scroller: ReturnType<typeof makeScroller>): void {
+    scroller.state.scrollTop = scroller.state.scrollHeight - VIEWPORT_HEIGHT;
+    scrollEvent();
+  }
+
+  function collect(): { calls: string[][]; onEnter: (blocks: { id: string }[]) => void } {
+    const calls: string[][] = [];
+    return {
+      calls,
+      onEnter: (blocks) => {
+        calls.push(blocks.map((block) => block.id));
+      },
+    };
+  }
+
+  it('还没到底时，没进过范围的 Block 不会被排', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller();
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1'), makeBlock('b2')], onEnter);
+    scrollEvent();
+    await settle();
+
+    expect(calls).toEqual([]);
+    tracker.stop();
+  });
+
+  it('⭐ 滚到页面底部后，没进过范围的 Block 也一并排队', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller();
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1'), makeBlock('b2')], onEnter);
+    toBottom(scroller);
+    await settle();
+
+    expect(calls.flat().sort()).toEqual(['b1', 'b2']);
+    tracker.stop();
+  });
+
+  it('⭐ 文档还很矮时不当作「已到底」——那等于整页翻译', async () => {
+    const fake = makeFakeObserver();
+    // 懒加载的图片与区块还没把高度撑起来：文档只有一屏高。
+    // 此时 scrollTop 恒为 0——包括 macOS 橡皮筋滚动发来的那种「假 scroll」。
+    const scroller = makeScroller({ scrollHeight: VIEWPORT_HEIGHT });
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1'), makeBlock('b2')], onEnter);
+    scrollEvent();
+    await settle();
+
+    expect(calls).toEqual([]);
+    tracker.stop();
+  });
+
+  it('停在底部时反复滚动只续翻一次', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller();
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1')], onEnter);
+    toBottom(scroller);
+    await settle();
+    scrollEvent();
+    await settle();
+
+    expect(calls).toHaveLength(1);
+    tracker.stop();
+  });
+
+  it('离开底部后重新武装：页面又长长了还能再续翻一次', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller();
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1')], onEnter);
+    toBottom(scroller);
+    await settle();
+
+    // 页面动态加载出新内容 —— 用户不再处于底部
+    scroller.state.scrollHeight = VIEWPORT_HEIGHT * 30;
+    scrollEvent();
+    await settle();
+
+    toBottom(scroller);
+    await settle();
+
+    expect(calls).toHaveLength(2);
+    tracker.stop();
+  });
+
+  it('已经 release 掉的 Block 不会再被排一次', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller();
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+    const [b1, b2] = [makeBlock('b1'), makeBlock('b2')];
+
+    tracker.start([b1, b2], onEnter);
+    tracker.release(b1);
+    toBottom(scroller);
+    await settle();
+
+    expect(calls.flat()).toEqual(['b2']);
+    tracker.stop();
+  });
+
+  it('距底部一屏内即算「到底」（阈值默认取前瞻区）', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller({ scrollTop: VIEWPORT_HEIGHT * 18 });
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1')], onEnter);
+    scrollEvent();
+    await settle();
+
+    expect(calls.flat()).toEqual(['b1']);
+    tracker.stop();
+  });
+
+  it('阈值可配置', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller({ scrollTop: VIEWPORT_HEIGHT * 18 });
+    const tracker = makeBottomTracker(fake, scroller, { bottomThresholdPx: 10 });
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1')], onEnter);
+    scrollEvent();
+    await settle();
+
+    expect(calls).toEqual([]);
+    tracker.stop();
+  });
+
+  it('关掉开关就退回「只翻相交过的内容」', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller();
+    const tracker = makeBottomTracker(fake, scroller, { continueAtBottom: false });
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1')], onEnter);
+    toBottom(scroller);
+    await settle();
+
+    expect(calls).toEqual([]);
+    tracker.stop();
+  });
+
+  it('stop 之后滚到底不再续翻（监听已摘掉）', async () => {
+    const fake = makeFakeObserver();
+    const scroller = makeScroller();
+    const tracker = makeBottomTracker(fake, scroller);
+    const { calls, onEnter } = collect();
+
+    tracker.start([makeBlock('b1')], onEnter);
+    tracker.stop();
+
+    toBottom(scroller);
+    await settle();
+
+    expect(calls).toEqual([]);
   });
 });
