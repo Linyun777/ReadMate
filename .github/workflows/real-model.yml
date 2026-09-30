@@ -1,0 +1,121 @@
+name: 真实模型 · 手动冒烟
+
+# ## 为什么单独一个 workflow，而且**只能手动触发**
+#
+# 常规 CI 全走 `LLM_PROVIDER=mock`（方案第 86.9 节：E2E 不得发起真实模型请求）。
+# 代价是**它证明不了真实模型会照做**——mock 的「译文」是固定前缀，
+# 结构校验永远通过。
+#
+# 这个 job 补的就是这个缺口：真实模型 × 完整链路（分段 → 批量 → 队列 → 渲染）。
+# 它断言的是**结构性事实**（译文是中文、inline 元素数量不变、恢复原文后
+# DOM 逐字节相同），不是文案——真实模型的译文没法预测。
+#
+# **不能**放进 `ci.yml`：会花钱，而且真实请求有不确定性，
+# 让每次 push 都被它卡住不划算。
+#
+# ## 需要先配好 3 个 secret
+#
+# Settings → Secrets and variables → Actions → New repository secret
+#
+#   LLM_API_KEY   真实 Provider 的密钥
+#   LLM_BASE_URL  形如 https://api.deepseek.com/v1
+#   LLM_MODEL     形如 deepseek-chat
+#
+# 没配的话这个 job 会在第一步给出明确提示并失败（不会偷偷跑成 mock）。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-model:
+    name: 真实模型 · 完整链路
+    runs-on: ubuntu-latest
+    # 真实请求比 mock 慢得多，留出余量
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: 检查 secrets 是否配置
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: |
+          missing=''
+          if [ -z "$LLM_API_KEY" ]; then missing="$missing LLM_API_KEY"; fi
+          if [ -z "$LLM_BASE_URL" ]; then missing="$missing LLM_BASE_URL"; fi
+          if [ -z "$LLM_MODEL" ]; then missing="$missing LLM_MODEL"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::缺少 secret：$missing。请到 Settings → Secrets and variables → Actions 里配置。"
+            exit 1
+          fi
+
+      - name: 安装扩展依赖
+        working-directory: extension
+        run: npm ci
+
+      - name: 构建扩展
+        working-directory: extension
+        run: npm run build
+
+      # `e2e/start-server.mjs` 会在 server/.venv 里找 Python，必须建在同一位置
+      - name: 创建服务端虚拟环境
+        run: |
+          python -m venv server/.venv
+          server/.venv/bin/pip install -r server/requirements.txt
+
+      - name: 安装 Chromium
+        working-directory: extension
+        run: npx playwright install --with-deps chromium
+
+      # 密钥经 env 传入、不写进脚本正文（脚本内容会进日志）。
+      # 文件放 $RUNNER_TEMP（不在仓库里），并用 umask 077 收紧权限。
+      - name: 写真实 Provider 的 .env
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: |
+          umask 077
+          env_file="$RUNNER_TEMP/wt-real.env"
+          {
+            printf 'LLM_PROVIDER=openai_compatible\n'
+            printf 'LLM_API_KEY=%s\n' "$LLM_API_KEY"
+            printf 'LLM_BASE_URL=%s\n' "$LLM_BASE_URL"
+            printf 'LLM_MODEL=%s\n' "$LLM_MODEL"
+            # 留空则回落到 LLM_MODEL
+            printf 'LLM_SUMMARY_MODEL=\n'
+          } > "$env_file"
+          echo "ENV_FILE_PATH=$env_file" >> "$GITHUB_ENV"
+
+      # `REAL_MODEL_E2E=1` 同时影响两处：
+      #   1. `real-model.spec.ts` 取消 `test.skip`
+      #   2. `e2e/start-server.mjs` 把 LLM_PROVIDER 切成真实 Provider
+      #      （默认是 mock，不得发起真实请求）
+      # `ENV_FILE_PATH` 覆盖它默认的临时 mock 配置，指向上一步那个真实 .env。
+      - name: 真实模型冒烟测试
+        working-directory: extension
+        env:
+          REAL_MODEL_E2E: '1'
+        run: npm run test:e2e -- e2e/real-model.spec.ts
+
+      - name: 失败时上传 trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-model-trace
+          path: extension/test-results/
+          retention-days: 7
