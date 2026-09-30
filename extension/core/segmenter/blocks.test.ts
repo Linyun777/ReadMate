@@ -134,6 +134,78 @@ describe('segmentElement — 跳过规则', () => {
   });
 });
 
+/**
+ * 交互控件（2026-09-30 为「token 消耗偏高」加的规则）。
+ *
+ * 真实页面（Mintlify 文档站）上，导航按钮、tab、菜单项都会各自变成
+ * 一个 Block——243 个块里 60% 短于 30 字符，全是这类操作标签。
+ */
+describe('segmentElement — 交互控件（button / role）', () => {
+  it('按钮文字不再成 Block', () => {
+    const blocks = segmentElement(
+      mount('<div><button type="button">Copy page</button></div><p>Real content here.</p>'),
+      options,
+    );
+
+    expect(blocks.map((block) => block.plainText)).toEqual(['Real content here.']);
+  });
+
+  it('只剩按钮的导航不产生 Block（spa.html 的 #go-two 就是这种结构）', () => {
+    const blocks = segmentElement(
+      mount('<nav><button id="go" type="button">Page Two</button></nav><p>Real content here.</p>'),
+      options,
+    );
+
+    expect(blocks.map((block) => block.plainText)).toEqual(['Real content here.']);
+  });
+
+  it('role="button" / role="tab" 的自定义控件同样跳过', () => {
+    const blocks = segmentElement(
+      mount(
+        '<div><div role="button">Copy page</div></div><div role="tablist"><div role="tab">JavaScript</div></div><p>Real content here.</p>',
+      ),
+      options,
+    );
+
+    expect(blocks.map((block) => block.plainText)).toEqual(['Real content here.']);
+  });
+
+  it('正文里混排的按钮变成原子占位符——元素保留，内容不发给模型', () => {
+    const blocks = segmentElement(
+      mount('<p>Press <button type="button">Copy page</button> to copy.</p>'),
+      options,
+    );
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.text).toBe('Press <0/> to copy.');
+    expect(blocks[0]?.plainText).toBe('Press to copy.');
+    expect(blocks[0]?.placeholders.map((item) => item.kind)).toEqual(['atom']);
+    expect(blocks[0]?.placeholders[0]?.node).toBeInstanceOf(HTMLButtonElement);
+  });
+
+  it('正文里的链接不受影响（<a> / role="link" 属于正文）', () => {
+    const blocks = segmentElement(
+      mount('<p>Read the <a href="/docs">documentation</a> first.</p>'),
+      options,
+    );
+
+    expect(blocks[0]?.plainText).toBe('Read the documentation first.');
+    expect(blocks[0]?.text).toBe('Read the <0>documentation</0> first.');
+  });
+
+  it('⭐ 容器内混排的 <svg><style> 不把 CSS 当正文（拼文本阶段也走同一判定）', () => {
+    const blocks = segmentElement(
+      mount('<p>Diagram follows <svg><style>#m{fill:#333}</style></svg>end.</p>'),
+      options,
+    );
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.text).not.toContain('fill:#333');
+    expect(blocks[0]?.plainText).toBe('Diagram follows end.');
+    expect(blocks[0]?.placeholders.map((item) => item.kind)).toEqual(['atom']);
+  });
+});
+
 describe('segmentElement — 文本过滤（方案第 9.4 节）', () => {
   it('跳过纯数字段落', () => {
     const blocks = segmentElement(

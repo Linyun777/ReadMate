@@ -25,7 +25,7 @@ import {
 import { Renderer } from '@/core/renderer';
 import { RouteWatcher, type RouteWatcherOptions } from '@/core/route';
 import { type SegmentOptions, segmentElement } from '@/core/segmenter';
-import { PageStore } from '@/core/store';
+import { blockAnchor, PageStore } from '@/core/store';
 import {
   buildTasks,
   fetchHealthViaBackground,
@@ -321,6 +321,25 @@ export class PageController {
       this.#store.byStatus('UNTRANSLATED').map((entry) => entry.block),
     );
 
+    // ⭐ 观察器必须在**发请求之前**装上。
+    //
+    // `#runBlocks` 要等整批跑完才返回——真实模型下是几十秒（实测 35–70s）。
+    // 这期间页面自己在改 DOM（实测 Mintlify 文档站加载后前 10 秒有约 300 次
+    // 节点新增、100 次移除），晚装的观察器会把它们**全部漏掉**：
+    // 表现就是「进度条在涨、页面上却没有译文」，以及滚动时新内容不翻译。
+    //
+    // 先把 `initial` 标成 QUEUED：否则视口追踪会把同一批再排一次（重复请求）。
+    this.#store.markMany(
+      initial.map((block) => block.id),
+      'QUEUED',
+    );
+    // 后续滚动进入视口的 Block 自动追加
+    this.#startTracking();
+    // 新加载 / 原地更新的内容自动接入（Phase 10）
+    this.#startWatching();
+    // SPA 路由变化后清理旧状态并重新分段（Phase 11）
+    this.#startRouteWatching();
+
     const generation = this.#generation;
     const result = await this.#runBlocks(initial);
 
@@ -334,12 +353,8 @@ export class PageController {
     this.#syncState();
     this.#renderTranslated();
 
-    // 后续滚动进入视口的 Block 自动追加
+    // 重新收集一次：这一轮跑完后还有没翻到的（视口外 / 失败后重试过的）
     this.#startTracking();
-    // 新加载 / 原地更新的内容自动接入（Phase 10）
-    this.#startWatching();
-    // SPA 路由变化后清理旧状态并重新分段（Phase 11）
-    this.#startRouteWatching();
 
     return toPageResult(result, this.#store.size);
   }
@@ -627,6 +642,9 @@ export class PageController {
   async #handleMutations(roots: readonly Element[]): Promise<void> {
     const fresh: TranslationBlock[] = [];
 
+    // 页面可能把容器**换成等价的新节点**——那条旧条目永远等不到重新分段
+    this.#sweepDetached();
+
     for (const root of roots) {
       // 重新分段前必须先把范围内的已渲染 Block 恢复原文——
       // 中文模式是就地改写文本，不恢复的话会把**译文**当成原文再翻一遍
@@ -636,18 +654,27 @@ export class PageController {
       // 每次重新分段换一个前缀：Block ID 按局部序号生成，
       // 沿用同一个前缀会与已有的 ID 冲突
       const blocks = segmentElement(root, this.#segmentOptions(`dyn${this.#dynamicRound}`));
+      const produced: string[] = [];
 
       for (const block of blocks) {
-        if (this.#store.upsert(block) === 'unchanged') {
+        const result = this.#store.upsert(block);
+
+        // `upsert` 命中旧锚点时保留旧 ID，所以要以 store 里的为准
+        const entry = this.#store.findByAnchor(blockAnchor(block));
+        if (entry === undefined) {
           continue;
         }
 
-        // `upsert` 命中旧容器时保留旧 ID，所以要以 store 里的为准
-        const entry = this.#store.findByElement(block.element);
-        if (entry !== undefined) {
+        produced.push(entry.block.id);
+
+        if (result !== 'unchanged') {
           fresh.push(entry.block);
         }
       }
+
+      // 对账：这次没再产出的条目（切点移动后锚点对不上、或内容已不值得翻译）
+      // 必须删掉，否则会留在 store 里变成幽灵
+      this.#store.reconcile(root, produced);
     }
 
     // 恢复过原文的 Block 需要按当前模式重绘
@@ -669,21 +696,42 @@ export class PageController {
     await this.#drain();
   }
 
-  /** 把某个容器范围内已渲染的 Block 恢复原文。 */
-  #restoreRenderedWithin(root: Element): void {
-    for (const blockId of this.#renderer.renderedIds()) {
-      const entry = this.#store.get(blockId);
-      if (entry === undefined) {
+  /**
+   * 清理「容器已经不在文档里」的条目。
+   *
+   * ## 为什么必须有
+   *
+   * 页面把某个容器**换成等价的新节点**时（React 客户端渲染的常见形状），
+   * 我们的锚点指向的是**旧节点**：
+   *
+   *   - `upsert` 认不出它（锚点不同）→ 只会再登记一条新条目
+   *   - 旧条目的容器不在重新分段的根里 → `reconcile` 也收不到它
+   *   - 旧译文节点是容器的**兄弟**，容器被换掉后它仍留在页面上
+   *
+   * 结果是新译文与旧译文同时出现——「同一段被翻了两遍」——成本也重复计。
+   * 判据很直接：容器不在文档里，这条就不可能再被渲染。
+   */
+  #sweepDetached(): void {
+    for (const entry of this.#store.all()) {
+      if (entry.block.element.isConnected) {
         continue;
       }
 
-      const { element } = entry.block;
-      if (element !== root && !root.contains(element)) {
-        continue;
-      }
-
-      this.#renderer.restore(blockId);
+      // 先摘掉可能还挂在页面上的译文节点，再从 store 里删掉
+      this.#renderer.restore(entry.block.id);
+      this.#store.remove(entry.block.id);
     }
+  }
+
+  /**
+   * 把某个容器范围内已渲染的 Block 恢复原文。
+   *
+   * ⚠️ 走渲染器自己的记录（`restoreWithin`），**不要**再用 `PageStore` 反查：
+   * 条目被对账删掉之后记录还在，那样会留下孤儿译文节点，
+   * 新译文一到就变成「同一段被翻了两遍」。
+   */
+  #restoreRenderedWithin(root: Element): void {
+    this.#renderer.restoreWithin(root);
   }
 
   /**
@@ -853,6 +901,7 @@ export class PageController {
    * `resume()` 内部会 `takeRecords()` 丢弃这期间积累的记录。
    */
   #renderTranslated(): void {
+    this.#sweepDetached();
     this.#watcher.pause();
 
     try {

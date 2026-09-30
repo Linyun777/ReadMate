@@ -138,6 +138,41 @@ test.describe('Phase 10 · 动态内容', () => {
     await fixture.close();
   });
 
+  test('⭐ 容器被换成等价新节点后，不会出现两份译文', async ({ context, extensionId }) => {
+    const { fixture, popup } = await translateFixture(context, extensionId);
+
+    const before = await countPluginNodes(fixture);
+
+    // React 客户端渲染的常见形状：把段落换成**等价的新节点**。
+    // 锚点因此改变，旧条目既不会被 upsert 认出，也不在重新分段的根里——
+    // 不专门清理的话，旧译文节点（它是容器的兄弟）会留在页面上，
+    // 新译文一到就成了「同一段被翻了两遍」。
+    const replaced = 'Replaced paragraph inserted by the page after hydration.';
+    await fixture.evaluate((text) => {
+      const old = document.querySelector('#plain-paragraph');
+      if (!(old instanceof HTMLElement)) {
+        return;
+      }
+      const replacement = document.createElement('p');
+      replacement.id = 'plain-paragraph';
+      replacement.textContent = text;
+      old.replaceWith(replacement);
+    }, replaced);
+
+    // 新译文渲染出来
+    await expect(fixture.locator('#plain-paragraph + [data-ai-translator="true"]')).toContainText(
+      `【译】${replaced}`,
+      { timeout: 30_000 },
+    );
+
+    // 而页面上仍然只有原来那么多个译文节点——旧的那一份已经被清掉
+    await expect(fixture.locator('#plain-paragraph + [data-ai-translator="true"]')).toHaveCount(1);
+    expect(await countPluginNodes(fixture)).toBe(before);
+
+    await popup.close();
+    await fixture.close();
+  });
+
   test('动态插入但内容无需翻译时不产生请求', async ({ context, extensionId }) => {
     const { fixture, popup } = await translateFixture(context, extensionId);
 

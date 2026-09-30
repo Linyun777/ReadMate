@@ -8,4 +8,4 @@
  *   - `entrypoints/popup` 通过消息读取 `stats()` 展示进度
  */
 
-export { getPageStore, PageStore, resetPageStore } from './page-store';
+export { blockAnchor, getPageStore, PageStore, resetPageStore } from './page-store';

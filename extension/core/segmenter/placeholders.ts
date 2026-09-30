@@ -16,7 +16,8 @@
  */
 
 import type { PlaceholderBinding } from '@/shared/types';
-import { ATOMIC_TAGS, BLOCK_TAGS, IGNORED_TAG_SET, PRESERVE_NEWLINE_WHITESPACE } from './constants';
+import { ATOMIC_TAGS, BLOCK_TAGS, PRESERVE_NEWLINE_WHITESPACE } from './constants';
+import { isIgnoredElement } from './filters';
 
 export interface PlaceholderResult {
   /** 含占位符的文本，提交给模型 */
@@ -44,8 +45,13 @@ function collapseSpaces(text: string): string {
  *
  * 只处理容器的**直接文本节点与内联后代**；遇到块级后代时跳过——
  * 它们属于各自的 Block。
+ *
+ * `nodes` 用于**拆大块**：只处理这一段子节点。省略即处理整个容器。
  */
-export function buildPlaceholderText(container: Element): PlaceholderResult {
+export function buildPlaceholderText(
+  container: Element,
+  nodes?: readonly Node[],
+): PlaceholderResult {
   const placeholders: PlaceholderBinding[] = [];
   const withPlaceholders: string[] = [];
   const plain: string[] = [];
@@ -80,43 +86,60 @@ export function buildPlaceholderText(container: Element): PlaceholderResult {
     }
   };
 
-  const walk = (node: Node): void => {
-    for (const child of Array.from(node.childNodes)) {
-      if (child.nodeType === Node.TEXT_NODE) {
-        addText(child.textContent ?? '');
-        continue;
-      }
-      if (child.nodeType !== Node.ELEMENT_NODE) {
-        continue;
-      }
+  /** 处理一个节点（文本 / 原子 / 成对）。递归用 `walkChildren`。 */
+  const visit = (child: Node): void => {
+    if (child.nodeType === Node.TEXT_NODE) {
+      addText(child.textContent ?? '');
+      return;
+    }
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
 
-      const element = child as Element;
+    const element = child as Element;
 
-      // 块级后代属于各自的 Block，不纳入本块
-      if (BLOCK_TAGS.has(element.tagName)) {
-        continue;
-      }
+    // 块级后代属于各自的 Block，不纳入本块
+    if (BLOCK_TAGS.has(element.tagName)) {
+      return;
+    }
 
-      // 被忽略的标签（CODE / PRE / KBD 等）与原子标签：整体原样保留
-      if (IGNORED_TAG_SET.has(element.tagName) || ATOMIC_TAGS.has(element.tagName)) {
-        const index = nextIndex;
-        nextIndex += 1;
-        placeholders.push({ index, kind: 'atom', node: element });
-        withPlaceholders.push(`<${index}/>`);
-        continue;
-      }
-
-      // 可翻译的内联元素：成对占位符，递归处理其内容
+    // 整块丢弃的标签（SCRIPT / PRE / SVG …）、交互控件、原子标签：
+    // 元素原样保留，但内容不发给模型。
+    //
+    // ⚠️ 这里必须与分段阶段的判定（`isIgnoredElement`）一致，
+    // 否则会出现「分段时说这块不翻译、拼文本时却把它发了出去」——
+    // 历史上 `<svg><style>` 的 CSS 就是这样被当正文翻译的。
+    if (isIgnoredElement(element) || ATOMIC_TAGS.has(element.tagName)) {
       const index = nextIndex;
       nextIndex += 1;
-      placeholders.push({ index, kind: 'pair', element });
-      withPlaceholders.push(`<${index}>`);
-      walk(element);
-      withPlaceholders.push(`</${index}>`);
+      placeholders.push({ index, kind: 'atom', node: element });
+      withPlaceholders.push(`<${index}/>`);
+      return;
+    }
+
+    // 可翻译的内联元素：成对占位符，递归处理其内容
+    const index = nextIndex;
+    nextIndex += 1;
+    placeholders.push({ index, kind: 'pair', element });
+    withPlaceholders.push(`<${index}>`);
+    walkChildren(element);
+    withPlaceholders.push(`</${index}>`);
+  };
+
+  const walkChildren = (parent: Node): void => {
+    for (const child of Array.from(parent.childNodes)) {
+      visit(child);
     }
   };
 
-  walk(container);
+  if (nodes === undefined) {
+    walkChildren(container);
+  } else {
+    // 拆大块：只走这一段，其余段归别的 Block
+    for (const node of nodes) {
+      visit(node);
+    }
+  }
 
   return {
     text: collapseSpaces(withPlaceholders.join('')),

@@ -125,5 +125,10 @@ export function describeState(state: ContentScriptState): string {
     return `已恢复原文，${stats.translated} 段译文已缓存${failure}`;
   }
 
-  return `已翻译 ${stats.translated}/${stats.total} 段${failure}`;
+  // 剩余的是**等待滚动**，不是失败——viewport-first 只翻视口附近的内容。
+  // 不写清楚的话，「已翻译 25/244 段」看起来像有 219 段挂了。
+  const pending = stats.total - stats.translated - stats.failed;
+  const pendingNote = pending > 0 ? '，其余滚动时自动翻译' : '';
+
+  return `已翻译 ${stats.translated}/${stats.total} 段${failure}${pendingNote}`;
 }

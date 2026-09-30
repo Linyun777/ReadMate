@@ -27,6 +27,7 @@ export interface MutationRecordLike {
   type: string;
   target: Node;
   addedNodes: ArrayLike<Node>;
+  removedNodes: ArrayLike<Node>;
 }
 
 export interface MutationObserverLike {
@@ -193,6 +194,15 @@ export class MutationWatcher {
 
       for (const node of Array.from(record.addedNodes)) {
         consider(node);
+      }
+
+      // ⚠️ **移走节点也要看**：页面用新节点替换旧节点时（React 客户端渲染
+      // 很常见），被移走的那个上面可能正挂着我们的译文——只看 `addedNodes`
+      // 会漏掉「只删不加」的情况，于是我们的 Block 一直指向已经脱离文档的
+      // 节点：进度在涨，页面上却没有译文。
+      // 重新分段的根取**变动的父节点**（它才是掉了一个子节点的那一层）。
+      if (record.removedNodes.length > 0) {
+        consider(record.target);
       }
     }
 

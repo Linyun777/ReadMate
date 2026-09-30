@@ -46,12 +46,12 @@ function makeFakeObserver() {
   };
 }
 
-function childList(target: Node, added: Node[]): MutationRecordLike {
-  return { type: 'childList', target, addedNodes: added };
+function childList(target: Node, added: Node[], removed: Node[] = []): MutationRecordLike {
+  return { type: 'childList', target, addedNodes: added, removedNodes: removed };
 }
 
 function characterData(target: Node): MutationRecordLike {
-  return { type: 'characterData', target, addedNodes: [] };
+  return { type: 'characterData', target, addedNodes: [], removedNodes: [] };
 }
 
 async function settle(ms = 30): Promise<void> {
@@ -252,6 +252,29 @@ describe('MutationWatcher · 变动归集', () => {
     expect(received).toEqual([]);
   });
 
+  it('⭐ 只删不加也要重新分段父容器（页面把我们的译文节点连着旧节点一起换掉了）', async () => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'Original paragraph.';
+    document.body.append(paragraph);
+
+    const fake = makeFakeObserver();
+    const received: Element[][] = [];
+    makeWatcher(fake).start((roots) => {
+      received.push(roots);
+    });
+
+    // React 客户端渲染的典型形状：先移走旧节点，再插入新节点。
+    // 只看 addedNodes 的话，「只删不加」这一步会被漏掉。
+    const old = paragraph.firstChild;
+    if (old !== null) {
+      paragraph.removeChild(old);
+      fake.fire([childList(paragraph, [], [old])]);
+    }
+    await settle();
+
+    expect(received).toEqual([[paragraph]]);
+  });
+
   it('没有可归集的节点时不回调', async () => {
     const fake = makeFakeObserver();
     const received: Element[][] = [];
@@ -259,7 +282,7 @@ describe('MutationWatcher · 变动归集', () => {
       received.push(roots);
     });
 
-    fake.fire([{ type: 'childList', target: document.body, addedNodes: [] }]);
+    fake.fire([{ type: 'childList', target: document.body, addedNodes: [], removedNodes: [] }]);
     await settle();
 
     expect(received).toEqual([]);

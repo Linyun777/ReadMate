@@ -352,6 +352,7 @@ const ROUND_TRIP_FIXTURES = [
   'code-block.html',
   'table.html',
   'mixed-language.html',
+  'long-container.html',
 ];
 
 const ROUND_TRIP_DIR = path.resolve(
@@ -427,5 +428,176 @@ describe.each(ROUND_TRIP_FIXTURES)('fixture 往返：%s', (name) => {
     renderer.restoreAll();
 
     expect(document.querySelectorAll('*').length).toBe(elementsBefore);
+  });
+});
+
+/**
+ * 拆大块：同一个容器下有多个 Block（方案第 57 节）。
+ *
+ * 渲染器原来以「整个容器」为单位快照与恢复，两个 Block 共享容器会互相覆盖。
+ * 现在受管内容收窄到**本段节点**，恢复靠「受管节点之后第一个不属于本块的兄弟」
+ * 定位——所以这里的重点全在**恢复之后 DOM 是不是逐字节相同**。
+ */
+describe('Renderer · 拆大块（一个容器多个 Block）', () => {
+  /**
+   * 归一化比较：占位符在 DOM 里是**元素**（`<strong>renderer</strong>`），
+   * 在 `plainText` 里是纯文本（`renderer`）；节点拼接处还可能出现连续空格。
+   * 两者都抹掉再比。
+   */
+  const squash = (value: string): string => value.replace(/\s+/g, '');
+
+  /** 取 `#flat-long` 这一组拆段块（顺序即文档顺序）。 */
+  function rangedBlocks(): TranslationBlock[] {
+    loadFixture('long-container.html');
+    return segmentElement(document.body, { targetLanguage: 'zh-CN' }).filter(
+      (block) => block.element.id === 'flat-long',
+    );
+  }
+
+  it('前置条件：这一组确实是拆出来的多段', () => {
+    const blocks = rangedBlocks();
+
+    expect(blocks.length).toBeGreaterThan(1);
+    expect(blocks.every((block) => block.range !== undefined)).toBe(true);
+  });
+
+  it('⭐ 中文模式：即使乱序渲染，容器内容仍按原文顺序拼好，且能逐字节恢复', () => {
+    const blocks = rangedBlocks();
+    const before = document.body.innerHTML;
+    const renderer = new Renderer();
+
+    // 流式下条目到达顺序本来就不保证——刻意倒着渲染
+    for (const block of [...blocks].reverse()) {
+      expect(renderer.render(block, fakeTranslation(block), 'chinese')).toEqual({ ok: true });
+    }
+
+    const container = document.querySelector('#flat-long');
+    expect(squash(container?.textContent ?? '')).toBe(
+      blocks.map((block) => squash(`【译】${block.plainText}`)).join(''),
+    );
+
+    renderer.restoreAll();
+    expect(document.body.innerHTML).toBe(before);
+  });
+
+  it('⭐ 双语模式：每段译文跟在本段原文之后，顺序与到达顺序无关，且能逐字节恢复', () => {
+    const blocks = rangedBlocks();
+    const before = document.body.innerHTML;
+    const renderer = new Renderer();
+
+    for (const block of [...blocks].reverse()) {
+      renderer.render(block, fakeTranslation(block), 'bilingual');
+    }
+
+    const holders = Array.from(document.querySelectorAll('#flat-long [data-ai-translator="true"]'));
+
+    expect(holders).toHaveLength(blocks.length);
+    // 按文档顺序读出来的译文，与原文分段的先后一致
+    expect(holders.map((holder) => squash(holder.textContent ?? ''))).toEqual(
+      blocks.map((block) => squash(`【译】${block.plainText}`)),
+    );
+
+    renderer.restoreAll();
+    expect(document.body.innerHTML).toBe(before);
+  });
+
+  it('恢复其中一段，其他段的译文不受影响', () => {
+    const blocks = rangedBlocks();
+    const target = first(blocks);
+    const renderer = new Renderer();
+
+    for (const block of blocks) {
+      renderer.render(block, fakeTranslation(block), 'chinese');
+    }
+
+    expect(renderer.restore(target.id)).toBe(true);
+
+    const container = document.querySelector('#flat-long');
+    const firstTextNode = target.range?.nodes.find((node) => node.nodeType === Node.TEXT_NODE);
+    const rawPrefix = (firstTextNode?.textContent ?? '').trim().slice(0, 24);
+
+    expect(rawPrefix.length).toBeGreaterThan(0);
+    expect(container?.textContent).toContain(rawPrefix);
+    expect(container?.textContent).toContain('【译】');
+  });
+
+  it('重复渲染同一段是幂等的（先恢复再重绘）', () => {
+    const blocks = rangedBlocks();
+    const target = first(blocks);
+    const renderer = new Renderer();
+
+    renderer.render(target, fakeTranslation(target), 'chinese');
+    renderer.render(target, `【改】${target.text}`, 'chinese');
+
+    expect(document.querySelector('#flat-long')?.textContent).toContain('【改】');
+    expect(document.querySelector('#flat-long')?.textContent).not.toContain('【译】');
+  });
+
+  it('拆段的容器里，未拆段的其他块不受影响（块级后代仍在原位）', () => {
+    const all = (() => {
+      loadFixture('long-container.html');
+      return segmentElement(document.body, { targetLanguage: 'zh-CN' });
+    })();
+    const nested = all.find((block) => block.element.id === 'nested');
+    const renderer = new Renderer();
+
+    if (nested === undefined) {
+      throw new Error('期望 fixture 里有嵌套段落');
+    }
+
+    for (const block of all) {
+      renderer.render(block, fakeTranslation(block), 'chinese');
+    }
+
+    expect(document.querySelector('#with-block #nested')?.textContent).toBe(
+      '【译】This nested paragraph belongs to its own block, not to the container.',
+    );
+  });
+});
+
+/**
+ * 按范围恢复：**只看渲染器自己的记录**，不看 `PageStore`。
+ *
+ * 为什么必须这样：重新分段之后条目可能已经被换掉或被对账删掉，
+ * 而渲染记录还在——孤儿记录里的译文节点会留在页面上，
+ * 新译文一到就成了「同一段被翻了两遍」。
+ */
+describe('Renderer · restoreWithin（按范围恢复）', () => {
+  it('恢复范围内的记录，范围外的不动', () => {
+    const blocks = setup(
+      '<div id="a"><p id="p1">First paragraph long enough.</p></div><div id="b"><p id="p2">Second paragraph long enough.</p></div>',
+    );
+    const renderer = new Renderer();
+
+    for (const block of blocks) {
+      renderer.render(block, fakeTranslation(block), 'bilingual');
+    }
+
+    const rootA = document.querySelector('#a');
+    if (rootA === null) {
+      throw new Error('期望 fixture 里有 #a');
+    }
+
+    expect(renderer.restoreWithin(rootA)).toBe(1);
+    expect(document.querySelector('#p1 + [data-ai-translator="true"]')).toBeNull();
+    expect(document.querySelector('#p2 + [data-ai-translator="true"]')).not.toBeNull();
+  });
+
+  it('⭐ 条目已经被删掉（孤儿记录）时同样能清掉译文节点', () => {
+    const blocks = setup('<p id="p">A paragraph long enough to translate.</p>');
+    const block = first(blocks);
+    const renderer = new Renderer();
+
+    renderer.render(block, fakeTranslation(block), 'bilingual');
+    expect(document.querySelector('[data-ai-translator="true"]')).not.toBeNull();
+
+    // 控制器那边已经不认识这个 Block 了，但渲染记录还在
+    expect(renderer.restoreWithin(document.body)).toBe(1);
+    expect(document.querySelector('[data-ai-translator="true"]')).toBeNull();
+  });
+
+  it('范围外没有记录时返回 0', () => {
+    const renderer = new Renderer();
+    expect(renderer.restoreWithin(document.body)).toBe(0);
   });
 });

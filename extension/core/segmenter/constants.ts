@@ -76,6 +76,36 @@ export const ATOMIC_TAGS: ReadonlySet<string> = new Set([
   'WBR',
 ]);
 
+/**
+ * 交互控件的 ARIA `role` 取值。
+ *
+ * `BUTTON` 标签由 `IGNORED_TAGS` 覆盖；这里补的是**属性**判定，
+ * 用来命中 `<div role="button">Copy page</div>` 这类自定义控件——
+ * 文档站与组件库大量使用它们，标签名看不出是控件。
+ *
+ * ## 为什么整类跳过，而不是「只有短文本才跳过」
+ *
+ * 交互控件里的文字是**操作标签**（`Copy page` / `Sign in` / tab 名），
+ * 不是正文。用长度阈值（如「短于 N 字符才跳过」）会引入一个新的、
+ * 无法预测的误杀边界：多一个字就可能从「跳过」变成「翻译」。
+ * 按控件类型判定，行为是确定的。
+ *
+ * ⚠️ **刻意不含 `link`**：`<a>` / `role="link"` 是正文的一部分
+ * （「读一下<a>文档</a>」），必须照常翻译。
+ */
+export const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
+  'button',
+  'tab',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'switch',
+  'checkbox',
+  'radio',
+  'option',
+  'combobox',
+]);
+
 /** 需要保留 CSS 换行语义的 `white-space` 取值。 */
 export const PRESERVE_NEWLINE_WHITESPACE: ReadonlySet<string> = new Set([
   'pre',
@@ -83,6 +113,35 @@ export const PRESERVE_NEWLINE_WHITESPACE: ReadonlySet<string> = new Set([
   'pre-line',
   'break-spaces',
 ]);
+
+/* ------------------------------------------------------------------ *
+ * 拆大块（方案第 57 节）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 容器文本超过这个长度就拆成多段。
+ *
+ * ## 为什么必须拆
+ *
+ * 实测（docs.langchain.com）：一个 3128 字符的 `<div>`（42 个行内占位符）
+ * 会生成约 1500 字符译文 ≈ 1000+ output token。Block 是**原子单位**，
+ * 整块一次性到达——用户盯着空白等 40–50 秒才看到第一段。
+ * 拆段后每段译文短，**先到的先渲染**。
+ *
+ * ## 为什么是 1000
+ *
+ * 文档站的正常段落多在 200–600 字符。1000 是「明显过长」的量级；
+ * 低于它的容器不该被无谓地切开（多切一段就多一份请求开销与上下文重复）。
+ */
+export const SPLIT_BLOCK_THRESHOLD_CHARS = 1000;
+
+/**
+ * 拆块后每段的目标字符数。
+ *
+ * 越短首屏越快，代价是请求条数变多、每段都要重复带一遍上下文。
+ * 500 字符 ≈「几秒出结果」的量级。
+ */
+export const BLOCK_CHUNK_TARGET_CHARS = 500;
 
 /**
  * 按标签名判定 Block 类型（方案第 56 节的 `blockType`）。

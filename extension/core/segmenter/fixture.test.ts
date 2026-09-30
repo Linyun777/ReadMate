@@ -348,11 +348,16 @@ describe('fixture 回归：dynamic-feed.html（动态内容）', () => {
     expect(blocks.some((block) => block.plainText.includes('updated in place'))).toBe(true);
   });
 
-  it('按钮文字也被分段（inline Block）', () => {
+  it('⭐ 按钮文字不再分段（交互控件的文本是操作标签，不是正文）', () => {
     const blocks = segmentNamed('dynamic-feed.html');
-    const buttons = blocks.filter((block) => block.tagName === 'BUTTON');
+    const allText = blocks.map((block) => block.plainText).join('\n');
 
-    expect(buttons.map((block) => block.plainText)).toEqual(['Load more', 'Rewrite live region']);
+    // 2026-09-30 变更：`BUTTON` 加入忽略表，解决「token 消耗偏高」。
+    // 这条断言以前是 `['Load more', 'Rewrite live region']`——按钮各自
+    // 成一个 Block 送去翻译，正是 `Copy page → 复制页面` 那类垃圾译文的来源。
+    expect(blocks.filter((block) => block.tagName === 'BUTTON')).toEqual([]);
+    expect(allText).not.toContain('Load more');
+    expect(allText).not.toContain('Rewrite live region');
   });
 
   it('页面脚本本身不产出 Block', () => {
@@ -466,5 +471,90 @@ describe('fixture 回归：code-heavy-docs.html', () => {
 
     expect(allText).toContain('useState hook'); // 代码块之前
     expect(allText).toContain('next section looks at'); // 代码块之后
+  });
+});
+
+/**
+ * 拆大块（方案第 57 节）。
+ *
+ * 一个 3000+ 字符的容器会长出 1000+ output token 的译文，整块一次性到达，
+ * 首屏要等几十秒。这里钉住「该切的切、不该切的不切」。
+ */
+describe('fixture 回归：long-container.html（拆大块）', () => {
+  const flatBlocks = (): TranslationBlock[] =>
+    segmentNamed('long-container.html').filter((block) => block.element.id === 'flat-long');
+
+  it('⭐ 超长且纯行内的容器被切成多段', () => {
+    const blocks = flatBlocks();
+
+    expect(blocks.length).toBeGreaterThan(1);
+    expect(blocks.every((block) => block.range !== undefined)).toBe(true);
+  });
+
+  it('⭐ 各段合起来正好是容器原来的子节点——顺序不变、不重不漏', () => {
+    // ⚠️ 只 load 一次：再调 `segmentNamed` 会重挂 body，拿到的是另一批节点对象
+    const root = loadFixture('long-container.html');
+    const container = root.querySelector('#flat-long');
+    const ranged = segmentElement(root, options)
+      .filter((block) => block.element.id === 'flat-long')
+      .flatMap((block) => block.range?.nodes ?? []);
+    const allChildren = Array.from(container?.childNodes ?? []);
+
+    // 切点只在子节点之间（绝不切开文本节点），所以这里应当是**同一批对象**
+    expect(ranged).toHaveLength(allChildren.length);
+    allChildren.forEach((node, index) => {
+      expect(ranged[index]).toBe(node);
+    });
+  });
+
+  it('段的先后与文档顺序一致（首段最先发出 → 首屏最快出结果）', () => {
+    const offsets = flatBlocks().map((block) => {
+      const first = block.range?.nodes[0];
+      const children: Node[] = Array.from(block.element.childNodes);
+      return first === undefined ? -1 : children.indexOf(first);
+    });
+
+    expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
+  });
+
+  it('每段都短于阈值上限，且带上自己的文本节点 ID', () => {
+    for (const block of flatBlocks()) {
+      expect(block.plainText).not.toBe('');
+      expect(block.nodeIds.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('内部嵌了块级后代的容器不切——切了段在容器里就不连续，恢复会错位', () => {
+    const blocks = segmentNamed('long-container.html').filter(
+      (block) => block.element.id === 'with-block',
+    );
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.range).toBeUndefined();
+    // 自身文本确实超过阈值（1000），只是被规则挡下来了
+    expect(blocks[0]?.plainText.length ?? 0).toBeGreaterThan(1000);
+  });
+
+  it('表格单元格不切（双语走的是另一条渲染路径）', () => {
+    const blocks = segmentNamed('long-container.html').filter(
+      (block) => block.element.id === 'cell',
+    );
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.range).toBeUndefined();
+    expect(blocks[0]?.blockType).toBe('table');
+    expect(blocks[0]?.plainText.length ?? 0).toBeGreaterThan(1000);
+  });
+
+  it('嵌套的块级后代仍然自成一块，没有被并进父容器', () => {
+    const blocks = segmentNamed('long-container.html');
+
+    expect(blocks.some((block) => block.plainText.includes('belongs to its own block'))).toBe(true);
+  });
+
+  it('Block ID 仍然唯一', () => {
+    const ids = segmentNamed('long-container.html').map((block) => block.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

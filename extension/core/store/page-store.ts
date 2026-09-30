@@ -23,19 +23,33 @@ import type {
 /** `upsert` 的结果。 */
 export type UpsertResult = 'added' | 'replaced' | 'unchanged';
 
+/**
+ * Block 的身份锚点。
+ *
+ * - 未拆段的 Block：**容器元素**（与历史行为一致）
+ * - 拆段的 Block：**本段的首个子节点**（同一容器下有多个 Block，
+ *   容器本身不再能区分它们）
+ *
+ * ⚠️ 为什么身份必须是 DOM 对象而不是 ID：ID 由分段器按局部序号生成，
+ * 对同一片 DOM 重新分段会得到冲突的 ID（见 AGENTS.md 第 5.3 节）。
+ */
+export function blockAnchor(block: TranslationBlock): Node {
+  return block.range?.nodes[0] ?? block.element;
+}
+
 export class PageStore {
   readonly #entries = new Map<string, BlockEntry>();
   /**
-   * 容器元素 → Block ID。
+   * 锚点（见 `blockAnchor`）→ Block ID。
    *
    * 存在的理由：**Block ID 由分段器按局部序号生成**（`block-001`），
    * 对同一片 DOM 重新分段会得到与已有 Block 冲突的 ID。
-   * 用元素身份做真正的锚点，就能判断「这个容器我是不是已经登记过」。
+   * 用 DOM 对象身份做真正的锚点，就能判断「这一块我是不是已经登记过」。
    *
    * 用 `WeakMap` 而非 `Map`：元素被页面移除后不该阻止其被回收。
    * 代价是没法 `clear()`，所以 `clear()` 里直接换一个新实例。
    */
-  #byElement = new WeakMap<Element, string>();
+  #byAnchor = new WeakMap<Node, string>();
   #pageState: PageState = 'IDLE';
 
   /* ---------------------------------------------------------------- *
@@ -72,7 +86,7 @@ export class PageStore {
 
     const entry: BlockEntry = { block, status: 'UNTRANSLATED' };
     this.#entries.set(block.id, entry);
-    this.#byElement.set(block.element, block.id);
+    this.#byAnchor.set(blockAnchor(block), block.id);
     return entry;
   }
 
@@ -94,10 +108,27 @@ export class PageStore {
     return this.#entries.has(blockId);
   }
 
-  /** 按容器元素反查 Block（动态内容去重用）。 */
+  /** 按容器元素反查 Block。未拆段时等价于 `findByAnchor(容器)`。 */
   findByElement(element: Element): BlockEntry | undefined {
-    const blockId = this.#byElement.get(element);
+    return this.findByAnchor(element);
+  }
+
+  /** 按锚点反查 Block（动态内容去重用）。 */
+  findByAnchor(anchor: Node): BlockEntry | undefined {
+    const blockId = this.#byAnchor.get(anchor);
     return blockId === undefined ? undefined : this.#entries.get(blockId);
+  }
+
+  /** 删掉单个条目（容器已脱离文档时用）。 */
+  remove(blockId: string): boolean {
+    const entry = this.#entries.get(blockId);
+    if (entry === undefined) {
+      return false;
+    }
+
+    this.#entries.delete(blockId);
+    this.#byAnchor.delete(blockAnchor(entry.block));
+    return true;
   }
 
   /**
@@ -112,12 +143,13 @@ export class PageStore {
    * 若每次都当新内容处理，已完成的翻译会被无限重置。
    */
   upsert(block: TranslationBlock): UpsertResult {
-    const existingId = this.#byElement.get(block.element);
+    const anchor = blockAnchor(block);
+    const existingId = this.#byAnchor.get(anchor);
     const existing = existingId === undefined ? undefined : this.#entries.get(existingId);
 
     if (existing === undefined) {
       this.#entries.set(block.id, { block, status: 'UNTRANSLATED' });
-      this.#byElement.set(block.element, block.id);
+      this.#byAnchor.set(anchor, block.id);
       return 'added';
     }
 
@@ -128,12 +160,45 @@ export class PageStore {
     // 文本变了：旧译文与旧占位符绑定都已失效，整条换掉
     this.#entries.delete(existing.block.id);
     this.#entries.set(block.id, { block, status: 'UNTRANSLATED' });
-    this.#byElement.set(block.element, block.id);
+    this.#byAnchor.set(anchor, block.id);
     return 'replaced';
   }
 
   all(): BlockEntry[] {
     return [...this.#entries.values()];
+  }
+
+  /**
+   * 用一次重新分段的结果对账：删掉 `root` 范围内**这次没有再次产出**的条目。
+   *
+   * 为什么必须有这一步：拆段后块的身份是「容器 + 首个子节点」。页面原地改写
+   * 一旦让切点移动，新旧锚点就对不上，`upsert` 只能把它当成新块加进来——
+   * 旧条目会**留在 store 里变成幽灵**：进度数虚高，还可能被再翻译一次。
+   * 只按锚点去重收不干净，必须按容器范围对账。
+   *
+   * @param root 本次重新分段的根
+   * @param keptIds 这次确实产出的条目 ID
+   * @returns 被删掉的 ID（供调用方记日志）
+   */
+  reconcile(root: Element, keptIds: readonly string[]): string[] {
+    const kept = new Set(keptIds);
+    const removed: string[] = [];
+
+    for (const entry of this.#entries.values()) {
+      const { element } = entry.block;
+      if (element !== root && !root.contains(element)) {
+        continue;
+      }
+      if (kept.has(entry.block.id)) {
+        continue;
+      }
+
+      this.#entries.delete(entry.block.id);
+      this.#byAnchor.delete(blockAnchor(entry.block));
+      removed.push(entry.block.id);
+    }
+
+    return removed;
   }
 
   byStatus(status: TranslationStatus): BlockEntry[] {
@@ -246,7 +311,7 @@ export class PageStore {
   clear(): void {
     this.#entries.clear();
     // WeakMap 无法清空，直接换一个新实例
-    this.#byElement = new WeakMap<Element, string>();
+    this.#byAnchor = new WeakMap<Node, string>();
     this.#pageState = 'IDLE';
   }
 }

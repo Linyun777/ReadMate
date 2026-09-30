@@ -310,9 +310,22 @@ export default defineContentScript({
       return;
     }
 
-    // 注意：MV3 的 content script 运行在**隔离世界**，这个标记在页面主世界中不可见。
-    // 它只用于本脚本自身的上下文判断，E2E 不能通过 page.evaluate 读取它。
-    (globalThis as unknown as Record<string, unknown>)[CONTENT_SCRIPT_FLAG] = true;
+    // ⚠️ **同一个页面可能被注入两次**，必须自己挡住第二次。
+    //
+    // 注入是「按需」的（`sendWithLazyInject`）：两条消息同时发现接收端不存在，
+    // 就会各注入一次；用户重复点「翻译当前页面」也可能落到这一步。
+    // 没有这个保护会同时跑起**两个 PageController**——各自有自己的 store、
+    // renderer 与 MutationObserver，一条 `TRANSLATE_PAGE` 两个实例都处理，
+    // 于是每个容器渲染出两份译文：用户看到的就是「同一段被翻了两遍」
+    // （实测在 Mintlify 文档站上稳定复现，见 `OPEN_ISSUES.md`）。
+    //
+    // 标记在**隔离世界**里，扩展重新加载后随世界一起消失，所以不会误挡新实例。
+    const globalScope = globalThis as unknown as Record<string, unknown>;
+    if (globalScope[CONTENT_SCRIPT_FLAG] === true) {
+      console.info('[ReadMate] content script 已在运行，跳过重复注入');
+      return;
+    }
+    globalScope[CONTENT_SCRIPT_FLAG] = true;
 
     // 设置是异步读取的，但消息监听必须**同步注册**——
     // 注入与随后的 TRANSLATE_PAGE 之间没有等待的余地。

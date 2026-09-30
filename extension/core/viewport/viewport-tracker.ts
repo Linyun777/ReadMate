@@ -92,7 +92,14 @@ export class ViewportTracker {
 
   #observer: ObserverLike | null = null;
   #onEnter: ((blocks: TranslationBlock[]) => void) | null = null;
-  #byElement = new Map<Element, TranslationBlock>();
+  /**
+   * 容器元素 → 该容器下的 Block 列表。
+   *
+   * 用**列表**而不是单个 Block：拆大块后同一个容器下有多个 Block，
+   * 只留最后一个会让其余段永远等不到回调（既不翻译，也不报错）。
+   * 观察器只能观察元素，所以由容器代表它这一组。
+   */
+  #byElement = new Map<Element, TranslationBlock[]>();
   /** 用 Map 去重：同一个元素可能被观察器重复回调 */
   #pending = new Map<string, TranslationBlock>();
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -137,14 +144,19 @@ export class ViewportTracker {
     }
 
     this.#onEnter = onEnter;
-    this.#byElement = new Map(blocks.map((block) => [block.element, block]));
+    this.#byElement = new Map();
+    for (const block of blocks) {
+      const group = this.#byElement.get(block.element) ?? [];
+      group.push(block);
+      this.#byElement.set(block.element, group);
+    }
     this.#observer = this.#createObserver((entries) => this.#handleEntries(entries), {
       // 下方扩展前瞻区；上方也给一点余量，让刚滚过去的 Block 仍能补翻
       rootMargin: `0px 0px ${this.#lookaheadPx}px 0px`,
     });
 
-    for (const block of blocks) {
-      this.#observer.observe(block.element);
+    for (const element of this.#byElement.keys()) {
+      this.#observer.observe(element);
     }
   }
 
@@ -164,8 +176,21 @@ export class ViewportTracker {
 
   /** 不再追踪某个 Block（翻译完成后调用，省掉无意义的回调）。 */
   release(block: TranslationBlock): void {
-    this.#observer?.unobserve(block.element);
-    this.#byElement.delete(block.element);
+    const group = this.#byElement.get(block.element);
+    if (group === undefined) {
+      return;
+    }
+
+    const remaining = group.filter((item) => item.id !== block.id);
+
+    // 该容器下没有待翻的段了才停止观察
+    if (remaining.length === 0) {
+      this.#observer?.unobserve(block.element);
+      this.#byElement.delete(block.element);
+      return;
+    }
+
+    this.#byElement.set(block.element, remaining);
   }
 
   #handleEntries(entries: readonly ObserverEntryLike[]): void {
@@ -176,13 +201,15 @@ export class ViewportTracker {
         continue;
       }
 
-      const block = this.#byElement.get(entry.target);
-      if (block === undefined) {
+      const group = this.#byElement.get(entry.target);
+      if (group === undefined) {
         continue;
       }
 
-      this.#pending.set(block.id, block);
-      added = true;
+      for (const block of group) {
+        this.#pending.set(block.id, block);
+        added = true;
+      }
     }
 
     if (added) {

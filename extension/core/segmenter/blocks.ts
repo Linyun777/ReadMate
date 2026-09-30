@@ -12,8 +12,14 @@
 
 import type { TranslationBlock } from '@/shared/types';
 
-import { BLOCK_TAGS, classifyBlock } from './constants';
-import { shouldSkipElement, shouldTranslateText } from './filters';
+import {
+  ATOMIC_TAGS,
+  BLOCK_CHUNK_TARGET_CHARS,
+  BLOCK_TAGS,
+  classifyBlock,
+  SPLIT_BLOCK_THRESHOLD_CHARS,
+} from './constants';
+import { isIgnoredElement, shouldSkipElement, shouldTranslateText } from './filters';
 import { buildPlaceholderText } from './placeholders';
 
 export interface SegmentOptions {
@@ -61,28 +67,137 @@ export function findBlockContainer(
  *
  * 输出顺序即文档顺序。
  */
+
+/** 一个容器下收集到的文本节点（ID 与节点都要留，拆大块时要按段分配）。 */
+interface ContainerGroup {
+  nodeIds: string[];
+  members: { node: Node; id: string }[];
+}
+
 /**
- * 文本节点到容器之间是否命中了适配器的忽略规则。
+ * 一个直接子节点在译文里的「分量」（字符数）。
  *
- * **只看适配器的规则，不看 `IGNORED_TAG_SET`**——后者是「作为原子占位符保留」
- * 的语义（如段落里的 `<code>`），不是「整段丢弃」。两者混在一起会改变既有行为。
- *
- * 不查路径的话，适配器的规则只有在被忽略元素**恰好就是容器**时才生效：
- * 例如 Reddit 的操作栏在 `shreddit-post` 内部，容器是 post 本身，
- * 于是「Vote」「Reply」会被并进帖子正文。
+ * 口径必须与 `buildPlaceholderText` 一致，否则切出来的段长短会与预期不符：
+ *   - 文本节点 → 原文长度（内容会发给模型）
+ *   - 块级后代 → 0（属于别的 Block，不参与本块）
+ *   - 被忽略的标签 / 交互控件 / 原子标签 → 1（只产出一个占位符）
+ *   - 其余内联元素 → 其文本长度（成对占位符，内容发给模型）
  */
-function isAdapterIgnoredOnPath(
+function nodeWeight(node: Node): number {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return (node.textContent ?? '').length;
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return 0;
+  }
+
+  const element = node as Element;
+  if (BLOCK_TAGS.has(element.tagName)) {
+    return 0;
+  }
+  if (isIgnoredElement(element) || ATOMIC_TAGS.has(element.tagName)) {
+    return 1;
+  }
+  return (element.textContent ?? '').length;
+}
+
+/**
+ * 把一个「过长」的容器切成若干段（拆大块，方案第 57 节）。
+ *
+ * 返回长度 1 表示不切。**切点只在子节点之间**——绝不切开文本节点，
+ * 否则原文无法逐字节恢复（铁律 4）。因此有两类容器不切：
+ *
+ *   - **有嵌套块级后代**：那些后代属于别的 Block，切出来的段在容器里
+ *     就不连续了，恢复位置会错位
+ *   - **表格单元格**（`TD` / `TH` / `CAPTION`）与 **inline 容器**：
+ *     它们的渲染路径与段级渲染不是一套，别动
+ *
+ * 单个节点自身就超过目标长度时（例如一个 5000 字符的文本节点），
+ * 它自成一整段——切不开，只能接受。
+ */
+function planChunks(container: Element, extraBlockTags?: readonly string[]): Node[][] {
+  const children = Array.from(container.childNodes);
+
+  if (!BLOCK_TAGS.has(container.tagName) || classifyBlock(container.tagName) === 'table') {
+    return [children];
+  }
+
+  const isBlockLevel = (node: Node): boolean =>
+    node.nodeType === Node.ELEMENT_NODE &&
+    (BLOCK_TAGS.has((node as Element).tagName) ||
+      extraBlockTags?.includes((node as Element).tagName) === true);
+
+  if (children.some(isBlockLevel)) {
+    return [children];
+  }
+
+  const total = children.reduce((sum, node) => sum + nodeWeight(node), 0);
+  if (total <= SPLIT_BLOCK_THRESHOLD_CHARS) {
+    return [children];
+  }
+
+  const chunks: Node[][] = [];
+  let current: Node[] = [];
+  let weight = 0;
+
+  for (const node of children) {
+    const size = nodeWeight(node);
+
+    // 只在子节点之间切：加上这个节点会超预算、且当前段非空 → 收口
+    if (current.length > 0 && weight + size > BLOCK_CHUNK_TARGET_CHARS) {
+      chunks.push(current);
+      current = [];
+      weight = 0;
+    }
+
+    current.push(node);
+    weight += size;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks.length > 1 ? chunks : [children];
+}
+
+/**
+ * 文本节点到容器之间是否命中了「整段丢弃」的规则。
+ *
+ * 两类规则都必须**沿路径**生效，只检查容器是不够的：
+ *
+ *   - 适配器的 `shouldIgnore`（如 Reddit 的操作栏）。不查路径的话，
+ *     它只有在被忽略元素**恰好就是容器**时才生效——操作栏在 `shreddit-post`
+ *     内部、容器是 post 本身，于是「Vote」「Reply」会被并进帖子正文。
+ *   - `isIgnoredElement`（忽略标签表 + 交互控件）。判定必须与
+ *     `hasIgnoredAncestor` / `buildPlaceholderText` 用同一个函数。
+ *
+ * ⚠️ **`IGNORED_TAG_SET` 为什么必须查路径**：容器是块级元素，被忽略的标签
+ * 几乎总是在它**内部**。Mintlify 的 mermaid 图表是
+ * `<div class="mermaid"><svg><style>…几千字符 CSS…</style></svg></div>`——
+ * 容器是 `DIV`，`shouldSkipElement(容器)` 不会命中，于是整段 CSS 被当成正文
+ * 送去翻译。这正是「翻译结果里冒出 `#mermaid-xxx{font-family:inherit…}`」的原因。
+ *
+ * ## 为什么不影响 `<code>`
+ *
+ * `<code>` 既不在 `IGNORED_TAG_SET` 也不在 `ATOMIC_TAGS`——它走的是
+ * 「**成对占位符** `<0>…</0>`」路径：模型看得见内容、能自然放置，但不改它。
+ * 语义与「整段丢弃」不同，所以这里加入 `IGNORED_TAG_SET` 不会波及行内代码。
+ *
+ * ⚠️ 另外注意 **SVG 命名空间里 `tagName` 是小写**（`style` / `svg`），
+ * 大小写归一化收在 `isIgnoredElement` 里。
+ */
+function isDroppedOnPath(
   start: Element,
   stopAt: Element,
   shouldIgnore?: (element: Element) => boolean,
 ): boolean {
-  if (shouldIgnore === undefined) {
-    return false;
-  }
-
   let current: Element | null = start;
   while (current && current !== stopAt) {
-    if (shouldIgnore(current)) {
+    if (isIgnoredElement(current)) {
+      return true;
+    }
+    if (shouldIgnore?.(current) === true) {
       return true;
     }
     current = current.parentElement;
@@ -95,7 +210,7 @@ export function segmentElement(root: Element, options: SegmentOptions): Translat
   const document = root.ownerDocument;
 
   // 第一遍：把文本节点按容器分组，同时分配节点 ID
-  const grouped = new Map<Element, string[]>();
+  const grouped = new Map<Element, ContainerGroup>();
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
   let counter = 0;
@@ -109,13 +224,15 @@ export function segmentElement(root: Element, options: SegmentOptions): Translat
       const container = findBlockContainer(parent, root, extraBlockTags);
       const skipped =
         shouldSkipElement(container, shouldIgnore) ||
-        isAdapterIgnoredOnPath(parent, container, shouldIgnore);
+        isDroppedOnPath(parent, container, shouldIgnore);
 
       if (!skipped) {
-        const nodeIds = grouped.get(container) ?? [];
-        nodeIds.push(`${idPrefix}-node-${counter}`);
+        const group = grouped.get(container) ?? { nodeIds: [], members: [] };
+        const nodeId = `${idPrefix}-node-${counter}`;
         counter += 1;
-        grouped.set(container, nodeIds);
+        group.nodeIds.push(nodeId);
+        group.members.push({ node: textNode, id: nodeId });
+        grouped.set(container, group);
       }
     }
 
@@ -123,32 +240,46 @@ export function segmentElement(root: Element, options: SegmentOptions): Translat
   }
 
   // 第二遍：为每个容器构建占位符文本，过滤后产出 Block
+  // 过长的容器先切成多段，每段一个 Block——见 `planChunks`
   const blocks: TranslationBlock[] = [];
   let blockIndex = 0;
 
-  for (const [container, nodeIds] of grouped) {
-    const { text, plainText, placeholders } = buildPlaceholderText(container);
-
-    if (plainText.length === 0) {
-      continue;
-    }
-    if (!shouldTranslateText(plainText, targetLanguage)) {
-      continue;
-    }
-
-    blockIndex += 1;
+  for (const [container, group] of grouped) {
+    const chunks = planChunks(container, extraBlockTags);
+    const split = chunks.length > 1;
     const isBlockContainer = BLOCK_TAGS.has(container.tagName);
 
-    blocks.push({
-      id: `${idPrefix}-${String(blockIndex).padStart(3, '0')}`,
-      nodeIds,
-      text,
-      plainText,
-      tagName: container.tagName,
-      blockType: isBlockContainer ? classifyBlock(container.tagName) : 'inline',
-      placeholders,
-      element: container,
-    });
+    for (const chunk of chunks) {
+      const { text, plainText, placeholders } = buildPlaceholderText(
+        container,
+        split ? chunk : undefined,
+      );
+
+      if (plainText.length === 0) {
+        continue;
+      }
+      if (!shouldTranslateText(plainText, targetLanguage)) {
+        continue;
+      }
+
+      blockIndex += 1;
+      const chunkNodes = new Set(chunk);
+
+      blocks.push({
+        id: `${idPrefix}-${String(blockIndex).padStart(3, '0')}`,
+        // 拆段后每段只认自己那部分文本节点的 ID
+        nodeIds: split
+          ? group.members.filter((member) => chunkNodes.has(member.node)).map((m) => m.id)
+          : group.nodeIds,
+        text,
+        plainText,
+        tagName: container.tagName,
+        blockType: isBlockContainer ? classifyBlock(container.tagName) : 'inline',
+        placeholders,
+        element: container,
+        ...(split ? { range: { nodes: chunk } } : {}),
+      });
+    }
   }
 
   return blocks;

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { TranslationBlock } from '@/shared/types';
 
 import { segmentElement } from '../segmenter';
-import { getPageStore, PageStore, resetPageStore } from './page-store';
+import { blockAnchor, getPageStore, PageStore, resetPageStore } from './page-store';
 
 /** 构造一个最小可用的 Block，避免测试依赖分段器。 */
 function makeBlock(id: string, text = 'Hello world', element?: Element): TranslationBlock {
@@ -339,5 +339,73 @@ describe('getPageStore — 共享实例', () => {
     resetPageStore();
 
     expect(getPageStore()).not.toBe(first);
+  });
+});
+
+/**
+ * 拆大块：同一个容器下有多个 Block（方案第 57 节）。
+ *
+ * 容器本身不再能区分它们，所以身份锚点从「容器元素」推广成
+ * 「容器元素 + 本段首个子节点」。未拆段时两者相同，历史行为不变。
+ */
+describe('PageStore — 拆大块的锚点（一个容器多个 Block）', () => {
+  /** 造一个「拆段」块：容器相同，`range` 指向本段那一截节点。 */
+  function makeRangedBlock(
+    id: string,
+    container: Element,
+    text: string,
+    nodes: Node[],
+  ): TranslationBlock {
+    return { ...makeBlock(id, text), element: container, range: { nodes } };
+  }
+
+  it('⭐ 同一容器的多段各自登记，靠首个子节点区分', () => {
+    const container = document.createElement('p');
+    const nodeA = document.createTextNode('A');
+    const nodeB = document.createTextNode('B');
+    container.append(nodeA, nodeB);
+
+    const store = new PageStore();
+    store.register(makeRangedBlock('block-001', container, 'A', [nodeA]));
+    store.register(makeRangedBlock('block-002', container, 'B', [nodeB]));
+
+    expect(store.size).toBe(2);
+    expect(store.findByAnchor(nodeA)?.block.id).toBe('block-001');
+    expect(store.findByAnchor(nodeB)?.block.id).toBe('block-002');
+    // 容器本身不再是锚点——它下面有多个块，指向哪一段是不确定的
+    expect(store.findByElement(container)).toBeUndefined();
+  });
+
+  it('upsert 按锚点去重：文本没变就 unchanged，变了才 replaced', () => {
+    const container = document.createElement('p');
+    const node = document.createTextNode('A');
+    container.append(node);
+
+    const store = new PageStore();
+
+    expect(store.upsert(makeRangedBlock('block-001', container, 'A', [node]))).toBe('added');
+    expect(store.upsert(makeRangedBlock('dyn1-001', container, 'A', [node]))).toBe('unchanged');
+    expect(store.upsert(makeRangedBlock('dyn2-001', container, 'A changed', [node]))).toBe(
+      'replaced',
+    );
+    expect(store.size).toBe(1);
+  });
+
+  it('未拆段的块仍然按容器元素反查（历史行为不变）', () => {
+    const element = document.createElement('p');
+    const store = new PageStore();
+    store.register(makeBlock('block-001', 'Hello.', element));
+
+    expect(store.findByElement(element)?.block.id).toBe('block-001');
+    expect(store.findByAnchor(element)?.block.id).toBe('block-001');
+  });
+
+  it('blockAnchor：未拆段取容器，拆段取本段首节点', () => {
+    const container = document.createElement('p');
+    const node = document.createTextNode('A');
+    container.append(node);
+
+    expect(blockAnchor(makeBlock('block-001', 'Hello.', container))).toBe(container);
+    expect(blockAnchor(makeRangedBlock('block-002', container, 'A', [node]))).toBe(node);
   });
 });

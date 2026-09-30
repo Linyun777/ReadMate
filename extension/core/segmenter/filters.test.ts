@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  hasIgnoredAncestor,
   isEditable,
   isHidden,
+  isIgnoredElement,
+  isInteractiveControl,
   isTooShort,
   looksLikeTargetLanguage,
+  shouldSkipElement,
   shouldTranslateText,
 } from './filters';
 
@@ -128,5 +132,105 @@ describe('isEditable — 可编辑字段（参考研究建议 8）', () => {
 
   it('普通元素不可编辑', () => {
     expect(isEditable(document.createElement('p'))).toBe(false);
+  });
+});
+
+describe('标签大小写 — SVG 命名空间', () => {
+  /**
+   * SVG 元素的 `tagName` 是**小写**（`style` / `svg` / `path`），
+   * HTML 元素才是大写。忽略表存的是大写，不归一化就会让
+   * `<svg><style>` 整棵子树漏过过滤——真实后果是 mermaid 图表的
+   * CSS（几千字符）被当成正文送去翻译。
+   */
+
+  function makeSvgStyle(): Element {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    style.textContent = '#mermaid-x{font-family:inherit;fill:#333;}';
+    svg.appendChild(style);
+    document.body.appendChild(svg);
+    return style;
+  }
+
+  it('svg 内的 style 标签名确实是小写（这就是漏过的原因）', () => {
+    expect(makeSvgStyle().tagName).toBe('style');
+  });
+
+  it('svg 内的 style 应被整棵跳过', () => {
+    const style = makeSvgStyle();
+    expect(shouldSkipElement(style)).toBe(true);
+    expect(hasIgnoredAncestor(style)).toBe(true);
+  });
+
+  it('HTML 的 STYLE 仍然被跳过（大写路径没被破坏）', () => {
+    const style = document.createElement('style');
+    style.textContent = 'p{color:red}';
+    document.body.appendChild(style);
+    expect(shouldSkipElement(style)).toBe(true);
+  });
+});
+
+describe('isInteractiveControl / isIgnoredElement — 交互控件（2026-09-30）', () => {
+  /** 取元素，取不到就失败——比 `!` 更容易在报错里看出问题。 */
+  function requireElement(selector: string): Element {
+    const element = document.querySelector(selector);
+    if (element === null) {
+      throw new Error(`未找到 ${selector}`);
+    }
+    return element;
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('<button> 属于忽略元素', () => {
+    expect(isIgnoredElement(document.createElement('button'))).toBe(true);
+  });
+
+  it('role="button" 的自定义控件属于忽略元素', () => {
+    const element = document.createElement('div');
+    element.setAttribute('role', 'button');
+
+    expect(isInteractiveControl(element)).toBe(true);
+    expect(isIgnoredElement(element)).toBe(true);
+  });
+
+  it('role 判定容忍大小写与首尾空白', () => {
+    const element = document.createElement('div');
+    element.setAttribute('role', '  Tab  ');
+
+    expect(isInteractiveControl(element)).toBe(true);
+  });
+
+  it('正文元素与链接不受影响（role="link" 属于正文）', () => {
+    const paragraph = document.createElement('p');
+    const anchor = document.createElement('a');
+    anchor.setAttribute('role', 'link');
+    const nav = document.createElement('nav');
+
+    expect(isIgnoredElement(paragraph)).toBe(false);
+    expect(isIgnoredElement(anchor)).toBe(false);
+    // 导航里的正文仍要翻译（方案第 65 节的「导航块优先」依赖这一点）
+    expect(isIgnoredElement(nav)).toBe(false);
+  });
+
+  it('hasIgnoredAncestor 沿路径生效：按钮内部的文本被忽略', () => {
+    document.body.innerHTML =
+      '<div id="host"><p id="p">Copy <button id="btn" type="button">here</button></p></div>';
+
+    expect(hasIgnoredAncestor(requireElement('#btn'))).toBe(true);
+    // stopAt 指定为容器时，容器自身不参与判定
+    const paragraph = requireElement('#p');
+    expect(hasIgnoredAncestor(paragraph, paragraph)).toBe(false);
+  });
+
+  it('shouldSkipElement 对交互控件返回 true', () => {
+    const button = document.createElement('button');
+    const custom = document.createElement('div');
+    custom.setAttribute('role', 'switch');
+
+    expect(shouldSkipElement(button)).toBe(true);
+    expect(shouldSkipElement(custom)).toBe(true);
   });
 });

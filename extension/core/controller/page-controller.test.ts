@@ -1053,3 +1053,199 @@ describe('PageController · 切到「原文」即停止翻译', () => {
     expect(countPluginNodes()).toBe(0);
   });
 });
+
+/**
+ * 拆大块（方案第 57 节）。
+ *
+ * 覆盖的是**接线**：分段产出多段 → 每段各自进批次 → 各自渲染 → 恢复时
+ * 各回原位。分段与渲染各自的细节在 segmenter / renderer 的用例里。
+ */
+describe('PageController · 拆大块', () => {
+  /**
+   * 24 个行内元素 + 它们之间的空白文本节点。
+   *
+   * ⚠️ 必须由**多个子节点**组成：拆块的切点只在子节点之间，
+   * 整个容器只有一个巨型文本节点时是切不开的（也无法逐字节恢复）。
+   * 合计约 1500 字符，超过阈值（1000），会被切成 3 段左右。
+   */
+  const LONG_HTML = Array.from(
+    { length: 24 },
+    (_, index) => `<span>Sentence ${index}: translation is mostly a scheduling problem.</span>`,
+  ).join(' ');
+
+  it('⭐ 超长容器拆成多段：逐段翻译、逐段渲染，恢复原文后 DOM 完全一致', async () => {
+    document.body.innerHTML = `<div id="flat-long">${LONG_HTML}</div>`;
+    const before = document.body.innerHTML;
+    const { send, calls } = makeStubSend();
+
+    const controller = createController({ send, viewportHeight: 800 });
+    await controller.translate();
+
+    const chunks = controller.store.all().filter((entry) => entry.block.element.id === 'flat-long');
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((entry) => entry.status === 'TRANSLATED')).toBe(true);
+    expect(chunks.every((entry) => entry.block.range !== undefined)).toBe(true);
+
+    // 每一段都是独立的翻译条目（而不是一个巨大的条目）
+    expect(calls.flatMap((call) => call.items)).toHaveLength(chunks.length);
+
+    // 双语模式下每段一个译文节点
+    expect(countPluginNodes()).toBe(chunks.length);
+
+    controller.restore();
+    expect(document.body.innerHTML).toBe(before);
+  });
+
+  it('拆段后动态改动容器：按锚点去重，不会把别段的状态一起重置', async () => {
+    document.body.innerHTML = `<div id="flat-long">${LONG_HTML}</div>`;
+    const { send } = makeStubSend();
+
+    const controller = createController({
+      send,
+      viewportHeight: 800,
+      mutationFlushDelayMs: 0,
+    });
+    await controller.translate();
+
+    const beforeCount = controller.store.size;
+    const firstChunk = controller.store.all()[0];
+    expect(firstChunk?.status).toBe('TRANSLATED');
+
+    // 只在**最后一段**的文本上做原地改动
+    const target = controller.store.all().at(-1);
+    const targetTextNode = target?.block.range?.nodes.find(
+      (node) => node.nodeType === Node.TEXT_NODE,
+    );
+    if (targetTextNode === undefined) {
+      throw new Error('期望最后一段里有文本节点');
+    }
+    targetTextNode.textContent = 'Completely rewritten text from the page.';
+
+    await waitFor(() => controller.store.size > beforeCount - 1, 3000);
+    await waitFor(
+      () =>
+        controller.store
+          .all()
+          .some((entry) => entry.block.plainText.includes('Completely rewritten')),
+      3000,
+    );
+
+    // 改动只影响那一段：条目总数没有翻倍
+    expect(controller.store.size).toBe(beforeCount);
+  });
+});
+
+/**
+ * 「观察器要早于首批请求」——这是一次真实的线上故障。
+ *
+ * `translate()` 曾经把 `#startWatching()` 放在 `await #runBlocks()` **之后**：
+ * 真实模型下首批要跑 35–70 秒，这期间页面自己改的 DOM 全被漏掉——
+ * 页面上的表现是「进度在涨、却没有译文」，滚动也不翻译。
+ */
+describe('PageController · 观察器启动时机', () => {
+  /**
+   * 可控的 send：请求先挂住，由测试决定何时返回。
+   *
+   * 用 `gate` 这个对象承接 resolver，而不是裸的 `let`——闭包里的赋值
+   * 会让 TypeScript 的控制流分析把变量窄化成 `never`。
+   */
+  function makeGatedSend() {
+    const gate: { payload: WireTranslateRequest | null; release: Array<() => void> } = {
+      payload: null,
+      release: [],
+    };
+
+    const send: SendTranslationRequest = (payload) => {
+      gate.payload = payload;
+      return new Promise((resolve) => {
+        gate.release.push(() =>
+          resolve({
+            context_id: payload.context_id ?? null,
+            prompt_version: 'v1',
+            model: 'stub',
+            items: payload.items.map((item) => ({
+              id: item.id,
+              source: item.text,
+              translation: `【译】${item.text}`,
+            })),
+          }),
+        );
+      });
+    };
+
+    const releaseAll = (): void => {
+      for (const release of gate.release.splice(0)) {
+        release();
+      }
+    };
+
+    return { send, gate, releaseAll };
+  }
+
+  it('⭐ 首批请求还没返回时，DOM 变动监听已经开着', async () => {
+    document.body.innerHTML = '<p>A paragraph long enough to translate.</p>';
+    const { send, gate, releaseAll } = makeGatedSend();
+
+    const controller = createController({ send, viewportHeight: 800 });
+    const translating = controller.translate();
+
+    await waitFor(() => gate.payload !== null);
+
+    // 请求还在飞，观察器必须已经在工作
+    expect(controller.watcher.running).toBe(true);
+
+    releaseAll();
+    await translating;
+  });
+
+  it('首批内容在发起前就标记为排队中（避免视口追踪重复排一次）', async () => {
+    document.body.innerHTML = '<p>A paragraph long enough to translate.</p>';
+    const { send, gate, releaseAll } = makeGatedSend();
+
+    const controller = createController({ send, viewportHeight: 800 });
+    const translating = controller.translate();
+    await waitFor(() => gate.payload !== null);
+
+    // 已经在飞的内容不该再是 UNTRANSLATED——否则视口追踪会把它再排一次
+    const inFlight = controller.store.byStatuses(['QUEUED', 'TRANSLATING', 'TRANSLATED']);
+    expect(inFlight.length).toBe(controller.store.size);
+
+    releaseAll();
+    await translating;
+  });
+
+  it('⭐ 容器被页面换成等价新节点时，旧译文节点会被清掉', async () => {
+    document.body.innerHTML = '<p id="p">A paragraph long enough to translate.</p>';
+    const { send } = makeStubSend();
+
+    const controller = createController({
+      send,
+      viewportHeight: 800,
+      mutationFlushDelayMs: 0,
+      enableCache: false,
+    });
+    await controller.translate();
+
+    expect(controller.store.size).toBe(1);
+    expect(countPluginNodes()).toBe(1);
+
+    // 页面把 <p> 换成等价的新节点（React 客户端渲染的常见形状）
+    const old = document.querySelector('#p');
+    const replacement = document.createElement('p');
+    replacement.id = 'p';
+    replacement.textContent = 'A paragraph long enough to translate.';
+    old?.replaceWith(replacement);
+
+    // 旧条目不清理的话，它的译文节点（容器的兄弟）会留在页面上——
+    // 新条目再翻一遍，用户看到的就是「同一段被翻了两遍」
+    //
+    // ⚠️ 不能等「下一兄弟是译文节点」——旧的那份译文节点本来就坐在那个位置，
+    // 一替换完就满足了，断言会假通过。这里等的是**条目换成了新节点**。
+    await waitFor(() => controller.store.all()[0]?.block.element === replacement, 3000);
+
+    // 页面上只该有这一份译文，store 里也只该有这一条
+    expect(countPluginNodes()).toBe(1);
+    expect(controller.store.all()).toHaveLength(1);
+  });
+});

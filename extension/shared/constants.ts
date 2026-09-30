@@ -39,8 +39,16 @@ export const ITEM_ENVELOPE_OVERHEAD = 64;
  * 调度（方案第 86.7 节：唯一调度点在 content script 的 core/queue）
  * ------------------------------------------------------------------ */
 
-/** 默认并发请求数。云端 API 可承受更高，但需保留对 429 的退避空间 */
-export const DEFAULT_CONCURRENCY = 3;
+/**
+ * 默认并发请求数。
+ *
+ * 从 3 提到 5：实测单个批次约 16 秒，而一个长文档页会有 9 个批次，
+ * 并发 3 时要跑 3 轮——用户看到的现象是「首屏翻完就卡住不动了」。
+ * 云端 API 能承受更高并发，且 `core/queue` 已有对 429 的退避重试兜底。
+ *
+ * 这是**默认值**，用户可在设置页调整（范围 1–5）。
+ */
+export const DEFAULT_CONCURRENCY = 5;
 
 /** 并发数下限与上限（方案第 86.7 节：范围 1–5） */
 export const MIN_CONCURRENCY = 1;
@@ -135,6 +143,13 @@ export const CONTENT_SCRIPT_FLAG = '__AI_TRANSLATOR_LOADED__';
  *   - 块级 → `isCodeContainer()`（等宽 + 块级）整体跳过
  *
  * `PRE` 仍然在表里：预格式化文本永远不该翻译，无论行内还是块级。
+ *
+ * ⚠️ **`BUTTON` 在表里，是 2026-09-30 为「token 消耗偏高」加的**：
+ * 按钮上的文字是**操作标签**（`Copy page` / `Sign in` / `Load more`），
+ * 不是正文。不排除的话它们会各自变成一个 Block 送去翻译，
+ * 既花 token，又会在页面上冒出「复制页面」这种译文。
+ * `role="button"` 这类**属性**判定不在标签表里——见
+ * `core/segmenter/constants.ts` 的 `INTERACTIVE_ROLES`。
  */
 export const IGNORED_TAGS: readonly string[] = [
   'SCRIPT',
@@ -147,4 +162,5 @@ export const IGNORED_TAGS: readonly string[] = [
   'SVG',
   'CANVAS',
   'PRE',
+  'BUTTON',
 ];

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Long Container</title>
+  </head>
+  <body>
+    <!--
+      「拆大块」用页面（方案第 57 节）。
+
+      三种容器，钉住「该切的切、不该切的不切」：
+
+        1. #flat-long   纯行内内容、超过阈值（1000 字符）→ **切成多段**
+        2. #with-block  内部嵌了块级后代 → **不切**
+                        （切出来的段在容器里就不连续了，恢复位置会错位）
+        3. #cell        表格单元格 → **不切**（双语渲染走的是另一条路径）
+
+      ⚠️ 长文本是刻意写这么长的：拆块阈值是 1000 字符，每段目标 500。
+      改阈值时这个 fixture 也要跟着看——它正是用来发现阈值失效的。
+    -->
+    <h1>Oversized containers</h1>
+
+    <div id="flat-long">
+      Translating a long document is mostly a scheduling problem. A model produces a bounded number
+      of tokens per second, so one enormous paragraph becomes one enormous wait. The
+      <strong>renderer</strong> can only show a translation after it has been produced, which means
+      the segmenter decides how long the reader stares at the original text. Cutting an oversized
+      container into several blocks changes the shape of that wait: each block is short, so the
+      first one comes back quickly and the page starts filling in immediately instead of waiting
+      for the slowest chunk of the entire document.
+      A second consideration is cost. Every block carries its own envelope, its own copy of the
+      shared context, and its own entry in the batch. Splitting everything down to single
+      sentences would multiply the prompt overhead without improving the reading experience, so the
+      threshold has to stay high enough that ordinary paragraphs are left alone, and only the
+      containers that are clearly too long for a single response get divided.
+      Finally there is <a href="#restore">restoring the original text</a>. Every translation must be
+      reversible byte for byte, which rules out cutting inside a text node: a node that has been
+      split can never be reassembled with the same object identity. Cutting between child nodes
+      keeps every original node intact, so restore can put the exact same objects back where they
+      came from, and the page returns to precisely the DOM it had before the translation ran.
+    </div>
+
+    <div id="with-block">
+      <p id="nested">This nested paragraph belongs to its own block, not to the container.</p>
+      A container that mixes prose with block level descendants cannot be divided safely, because
+      the pieces would no longer be a contiguous run inside the container and restoring them would
+      land in the wrong place. The safe answer is to leave such a container alone: it stays one
+      block, however long it happens to be, and the reader waits a little longer for it. That is
+      an acceptable trade because the common case on documentation sites is a flat run of prose
+      with inline links and emphasis, and that case is exactly the one worth cutting apart.
+      Keeping the rule this narrow also keeps the renderer simple, since every segment it
+      handles is guaranteed to be a contiguous slice of the original children.
+      There is a second reason to be careful with containers that hold block level descendants.
+      The block below belongs to its own translation unit, so the surrounding prose is only part
+      of what the container displays, and the reader sees the two pieces arrive at different
+      times no matter what the splitter does. Dividing the prose as well would add a third
+      arrival time without buying anything, and it would mix two restore strategies in one
+      container, which is precisely the sort of interaction that breaks in ways nobody notices
+      until a page fails to restore.
+    </div>
+
+    <table>
+      <tbody>
+        <tr>
+          <td id="cell">
+            Table cells are rendered differently in bilingual mode, where the translation is
+            appended inside the cell rather than after the container, so dividing a cell into
+            several segments would need a second rendering path and a second set of restore rules.
+            Rather than carry that duplication for a case that barely happens, the splitter
+            simply declines to touch table cells. The cost of that decision is bounded and easy to
+            reason about, which matters more here than shaving a few seconds off a rare page.
+            A cell is also a poor unit for splitting in the first place. Its width is usually
+            narrow, the text inside it is short by construction, and the column already gives the
+            reader a visual signal that the content is a single field rather than a paragraph.
+            Dividing one would stack several translated fragments inside the same cell, which
+            reads worse than the single block the reader gets today, and it would leave the
+            restore path with two different rules to remember for a shape of content that is
+            genuinely rare on the pages this tool is built for.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p id="short">Short paragraphs are never divided.</p>
+  </body>
+</html>

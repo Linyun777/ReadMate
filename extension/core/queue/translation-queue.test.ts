@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { PageStore } from '@/core/store';
-import { MAX_CONCURRENCY, MIN_CONCURRENCY } from '@/shared/constants';
+import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY, MIN_CONCURRENCY } from '@/shared/constants';
 import type {
   StreamTranslationRequest,
   TranslationBlock,
@@ -77,7 +77,7 @@ beforeEach(() => {
 });
 
 describe('TranslationQueue · 并发（Phase 8 验收标准）', () => {
-  it('并发稳定在 3', async () => {
+  it('并发稳定在默认值', async () => {
     const ids = Array.from({ length: 9 }, (_unused, index) => `b${index + 1}`);
     const store = makeStore(ids);
 
@@ -99,7 +99,9 @@ describe('TranslationQueue · 并发（Phase 8 验收标准）', () => {
       store,
     );
 
-    expect(peak).toBe(3);
+    // 断言「等于默认并发」而不是写死数字——否则每次调整 DEFAULT_CONCURRENCY
+    // 都要改测试，而测试想守的是「并发受配置控制」这条行为
+    expect(peak).toBe(DEFAULT_CONCURRENCY);
     expect(result.succeeded).toBe(9);
   });
 

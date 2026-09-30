@@ -27,6 +27,8 @@ export {
   isCodeContainer,
   isEditable,
   isHidden,
+  isIgnoredElement,
+  isInteractiveControl,
   isTooShort,
   looksLikeTargetLanguage,
   shouldSkipElement,

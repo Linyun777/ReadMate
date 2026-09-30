@@ -39,7 +39,7 @@ Prompt 大小、批次数、模型速度、重试次数都只有跑过才知道�
 Batch 预算（24000 字符 / 30 条目）与 `extension/core/translator/constants.ts`
 是同一套规则的两份实现。之所以不共享：那份是 TypeScript，本脚本是 Python，
 跨语言共享需要引入构建步骤——为一个测量脚本不值得。
-**改预算规则时两边都要改**。
+**改预算规则时两边都要改**（已在 `AGENTS.md` 记录）。
 """
 
 from __future__ import annotations

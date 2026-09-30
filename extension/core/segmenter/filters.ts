@@ -7,7 +7,7 @@
  *   - 参考研究结论（目标语言检测、脚本感知长度规则、可编辑字段）
  */
 
-import { IGNORED_TAG_SET } from './constants';
+import { IGNORED_TAG_SET, INTERACTIVE_ROLES } from './constants';
 
 /* ------------------------------------------------------------------ *
  * 元素级过滤
@@ -98,6 +98,41 @@ export function isEditable(element: Element): boolean {
   return false;
 }
 
+/* ------------------------------------------------------------------ *
+ * 「内容不翻译」的统一判定
+ * ------------------------------------------------------------------ */
+
+/**
+ * 元素是否为交互控件（`role="button"` / `role="tab"` 等）。
+ *
+ * `<button>` 标签不走这里——它在 `IGNORED_TAGS` 里。
+ * 这一条补的是用 `role` 表达的自定义控件（文档站、组件库常见）。
+ */
+export function isInteractiveControl(element: Element): boolean {
+  const role = element.getAttribute('role');
+  return role !== null && INTERACTIVE_ROLES.has(role.trim().toLowerCase());
+}
+
+/**
+ * 元素是否属于「内容不翻译」的一类：忽略标签 ∪ 交互控件。
+ *
+ * ⚠️ **三处判定必须用同一个函数**，否则规则会在某条路径上静默失效：
+ *
+ *   1. `hasIgnoredAncestor` / `shouldSkipElement` —— 分段阶段，决定要不要建 Block
+ *   2. `isDroppedOnPath`（`blocks.ts`）—— 分段阶段，决定 Block 里还剩不剩文本
+ *   3. `buildPlaceholderText`（`placeholders.ts`）—— 拼文本阶段，决定内容发不发给模型
+ *
+ * 第 3 条最容易被漏掉：它不查路径，只按**直接子元素**判定。
+ * 历史事故：那里漏了大小写归一化，于是容器里混排的 `<svg><style>` 子树
+ * （`tagName` 是小写）没被当成忽略内容，几千字符 CSS 被当正文发了出去。
+ *
+ * **归一化大小写**：SVG 命名空间的 `tagName` 是小写（`style` / `svg`），
+ * HTML 元素才是大写（`STYLE`）。忽略表存的是大写，不归一化就会漏。
+ */
+export function isIgnoredElement(element: Element): boolean {
+  return IGNORED_TAG_SET.has(element.tagName.toUpperCase()) || isInteractiveControl(element);
+}
+
 /**
  * 元素自身或任一祖先（直到 `stopAt`，不含）是否属于被忽略标签。
  *
@@ -111,7 +146,8 @@ export function hasIgnoredAncestor(
 ): boolean {
   let current: Element | null = element;
   while (current && current !== stopAt) {
-    if (IGNORED_TAG_SET.has(current.tagName)) {
+    // 忽略标签 / 交互控件（`isIgnoredElement` 内含大小写归一化与原因说明）
+    if (isIgnoredElement(current)) {
       return true;
     }
     // 代码容器：整块跳过，见 `isCodeContainer` 的说明
@@ -138,7 +174,7 @@ export function shouldSkipElement(
   element: Element,
   shouldIgnore?: (element: Element) => boolean,
 ): boolean {
-  if (IGNORED_TAG_SET.has(element.tagName)) {
+  if (isIgnoredElement(element)) {
     return true;
   }
   if (isHidden(element) || isEditable(element)) {

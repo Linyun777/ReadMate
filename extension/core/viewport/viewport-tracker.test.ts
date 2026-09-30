@@ -314,3 +314,56 @@ describe('ViewportTracker · 追踪与回调', () => {
     expect(fake.state.disconnected).toBe(true);
   });
 });
+
+/**
+ * 拆大块：同一个容器下有多个 Block（方案第 57 节）。
+ *
+ * `IntersectionObserver` 只能观察元素，所以由容器代表它这一组——
+ * 但**组里的每一段都要被回调**，否则后面的段永远不会被翻译。
+ */
+describe('ViewportTracker · 拆大块（一个容器多个 Block）', () => {
+  it('⭐ 同一容器下的多段都会随容器进入范围而被回调', async () => {
+    const fake = makeFakeObserver();
+    const tracker = makeTracker(fake);
+
+    const element = document.createElement('p');
+    document.body.append(element);
+    stubRect(element, 10);
+
+    const blockA: TranslationBlock = { ...makeBlock('a-001'), element };
+    const blockB: TranslationBlock = { ...makeBlock('b-001'), element };
+
+    const received: string[] = [];
+    tracker.start([blockA, blockB], (blocks) => {
+      received.push(...blocks.map((block) => block.id));
+    });
+
+    // 容器只观察一次——它代表整组
+    expect(fake.observed).toEqual([element]);
+
+    fake.fire([{ target: element, isIntersecting: true }]);
+
+    await settle();
+
+    expect(received.sort()).toEqual(['a-001', 'b-001']);
+  });
+
+  it('release 只摘掉这一段；组里还有别的段时容器继续被观察', () => {
+    const fake = makeFakeObserver();
+    const tracker = makeTracker(fake);
+
+    const element = document.createElement('p');
+    document.body.append(element);
+
+    const blockA: TranslationBlock = { ...makeBlock('a-001'), element };
+    const blockB: TranslationBlock = { ...makeBlock('b-001'), element };
+
+    tracker.start([blockA, blockB], () => {});
+
+    tracker.release(blockA);
+    expect(fake.unobserved).toEqual([]);
+
+    tracker.release(blockB);
+    expect(fake.unobserved).toEqual([element]);
+  });
+});
