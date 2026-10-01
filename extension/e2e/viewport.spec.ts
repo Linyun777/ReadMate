@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { activateFixtureTab, expect, openPopup, test } from './fixtures';
+import { activateFixtureTab, countPluginNodes, expect, openPopup, test } from './fixtures';
 
 /**
  * Phase 9 · Viewport-first + Lazy Translation（方案第 65、66 节）。
@@ -234,6 +234,38 @@ test.describe('Phase 9 · Viewport-first + Lazy', () => {
       `已翻译 ${INNER_BLOCKS}/${INNER_BLOCKS} 段`,
       { timeout: 60_000 },
     );
+
+    await popup.close();
+    await fixture.close();
+  });
+
+  test('⭐ 跳到底续翻之后，恢复原文仍然逐字节还原', async ({ context, extensionId }) => {
+    const fixture = await context.newPage();
+    await fixture.setViewportSize(VIEWPORT);
+    await fixture.goto(LARGE_URL);
+    const before = await fixture.evaluate(() => document.body.innerHTML);
+
+    const popup = await openPopup(context, extensionId);
+    await activateFixtureTab(context, LARGE_URL);
+    await popup.locator('#translate').click();
+    await expect(popup.locator('#status')).toContainText('已翻译', { timeout: 60_000 });
+
+    // 走「到底续翻」这条路径：那些块**从来没进过视口**，
+    // 是被续翻排进队列的（视口路径碰不到它们）
+    await fixture.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await expect(popup.locator('#status')).toContainText(
+      `已翻译 ${LARGE_BLOCKS}/${LARGE_BLOCKS} 段`,
+      { timeout: 60_000 },
+    );
+
+    // 铁律 4：无论走哪条路径排进去的，恢复后 DOM 都必须与最初逐字节相同
+    await popup.getByRole('radio', { name: '原文' }).check();
+    await expect(popup.locator('#status')).toContainText('已恢复原文');
+
+    await expect.poll(() => countPluginNodes(fixture)).toBe(0);
+    expect(await fixture.evaluate(() => document.body.innerHTML)).toBe(before);
 
     await popup.close();
     await fixture.close();
