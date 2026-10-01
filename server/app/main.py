@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="伴读 · ReadMate API",
-        version="2.1.0",
+        version="2.2.0",
         docs_url="/docs",
         redoc_url=None,
     )

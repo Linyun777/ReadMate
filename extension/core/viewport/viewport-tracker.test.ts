@@ -572,4 +572,93 @@ describe('ViewportTracker · 滚到底续翻', () => {
 
     expect(calls).toEqual([]);
   });
+
+  /** jsdom 不做布局：`clientHeight` / `scrollHeight` 恒为 0，`scrollTop` 也设不进去。 */
+  function stubScrollBox(
+    element: Element,
+    metrics: { scrollTop: number; clientHeight: number; scrollHeight: number },
+  ): void {
+    for (const [key, value] of Object.entries(metrics)) {
+      Object.defineProperty(element, key, { value, configurable: true, writable: true });
+    }
+  }
+
+  /** 造一个「正文滚在内部容器里」的场景，返回容器与其中的 Block。 */
+  function makeInnerPane(textHeight = VIEWPORT_HEIGHT * 6) {
+    const pane = document.createElement('div');
+    document.body.append(pane);
+    const block = makeBlock('b1');
+    pane.append(block.element);
+    stubScrollBox(pane, {
+      scrollTop: 0,
+      clientHeight: VIEWPORT_HEIGHT,
+      scrollHeight: textHeight,
+    });
+
+    return {
+      pane,
+      block,
+      /** 把它滚到底（并把新的 scrollTop 反映到桩上） */
+      scrollToBottom(): void {
+        stubScrollBox(pane, {
+          scrollTop: textHeight - VIEWPORT_HEIGHT,
+          clientHeight: VIEWPORT_HEIGHT,
+          scrollHeight: textHeight,
+        });
+        // ⚠️ 派发到 pane 上、而不是 window：`scroll` 事件**不冒泡**，
+        // 能收到就说明监听确实挂在捕获阶段
+        pane.dispatchEvent(new Event('scroll'));
+      },
+    };
+  }
+
+  it('⭐ 内容滚在内部容器里时，滚到它的底部也会续翻（靠捕获阶段才收得到）', async () => {
+    const fake = makeFakeObserver();
+    const tracker = makeBottomTracker(fake, makeScroller());
+    const { calls, onEnter } = collect();
+    const { pane, block, scrollToBottom } = makeInnerPane();
+
+    tracker.start([block], onEnter);
+    scrollToBottom();
+    await settle();
+
+    expect(calls.flat()).toEqual(['b1']);
+    expect(pane.contains(block.element)).toBe(true);
+    tracker.stop();
+  });
+
+  it('矮滚动条（代码块、下拉列表那种）不触发——它们天然「已在底部」', async () => {
+    const fake = makeFakeObserver();
+    const tracker = makeBottomTracker(fake, makeScroller());
+    const { calls, onEnter } = collect();
+    const { block, scrollToBottom } = makeInnerPane(VIEWPORT_HEIGHT * 0.2);
+
+    tracker.start([block], onEnter);
+    scrollToBottom();
+    await settle();
+
+    expect(calls).toEqual([]);
+    tracker.stop();
+  });
+
+  it('不含正文的滚动容器滚到底也不触发', async () => {
+    const fake = makeFakeObserver();
+    const tracker = makeBottomTracker(fake, makeScroller());
+    const { calls, onEnter } = collect();
+    // 这个容器够高，但里面没有我们的 Block
+    const outside = document.createElement('div');
+    document.body.append(outside);
+    stubScrollBox(outside, {
+      scrollTop: VIEWPORT_HEIGHT * 5,
+      clientHeight: VIEWPORT_HEIGHT,
+      scrollHeight: VIEWPORT_HEIGHT * 6,
+    });
+
+    tracker.start([makeBlock('b1')], onEnter);
+    outside.dispatchEvent(new Event('scroll'));
+    await settle();
+
+    expect(calls).toEqual([]);
+    tracker.stop();
+  });
 });

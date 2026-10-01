@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Inner Scroller</title>
+    <style>
+      /*
+       * 「正文滚在内部容器里」的页面。
+       *
+       * 用途：`scroll` 事件**不冒泡**——内容滚在 `overflow: auto` 的 div 里时，
+       * 事件停在那个 div 上，window 的冒泡监听永远收不到。
+       * 「滚到底续翻」必须靠**捕获**阶段才能覆盖这类页面。
+       *
+       * 容器要显著高于「视口 + 前瞻区」（一屏 + 一屏），否则跳到底时
+       * 视口已经把整页覆盖了，测不出「中途被跳过」这件事。
+       */
+      body {
+        margin: 0;
+      }
+      #pane {
+        height: 100vh;
+        overflow-y: auto;
+        padding: 0 16px;
+        box-sizing: border-box;
+      }
+      p {
+        line-height: 1.7;
+        margin: 1em 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Phase 9 fixture：正文滚在**内部容器**里。
+      60 段正文，容器高度固定为 100vh —— 内容高度约 5 屏以上。
+    -->
+    <div id="pane">
+      <h1>Inner Scroller</h1>
+      <p id="para-001">Retrieval augmented generation grounds model output in verifiable sources before answering (section 1).</p>
+      <p id="para-002">Chunking strategy decides how much context each passage carries and both extremes hurt (section 2).</p>
+      <p id="para-003">Embedding models compress text into dense vectors whose distances approximate similarity (section 3).</p>
+      <p id="para-004">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 4).</p>
+      <p id="para-005">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 5).</p>
+      <p id="para-006">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 6).</p>
+      <p id="para-007">Retrieval augmented generation grounds model output in verifiable sources before answering (section 7).</p>
+      <p id="para-008">Chunking strategy decides how much context each passage carries and both extremes hurt (section 8).</p>
+      <p id="para-009">Embedding models compress text into dense vectors whose distances approximate similarity (section 9).</p>
+      <p id="para-010">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 10).</p>
+      <p id="para-011">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 11).</p>
+      <p id="para-012">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 12).</p>
+      <p id="para-013">Retrieval augmented generation grounds model output in verifiable sources before answering (section 13).</p>
+      <p id="para-014">Chunking strategy decides how much context each passage carries and both extremes hurt (section 14).</p>
+      <p id="para-015">Embedding models compress text into dense vectors whose distances approximate similarity (section 15).</p>
+      <p id="para-016">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 16).</p>
+      <p id="para-017">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 17).</p>
+      <p id="para-018">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 18).</p>
+      <p id="para-019">Retrieval augmented generation grounds model output in verifiable sources before answering (section 19).</p>
+      <p id="para-020">Chunking strategy decides how much context each passage carries and both extremes hurt (section 20).</p>
+      <p id="para-021">Embedding models compress text into dense vectors whose distances approximate similarity (section 21).</p>
+      <p id="para-022">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 22).</p>
+      <p id="para-023">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 23).</p>
+      <p id="para-024">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 24).</p>
+      <p id="para-025">Retrieval augmented generation grounds model output in verifiable sources before answering (section 25).</p>
+      <p id="para-026">Chunking strategy decides how much context each passage carries and both extremes hurt (section 26).</p>
+      <p id="para-027">Embedding models compress text into dense vectors whose distances approximate similarity (section 27).</p>
+      <p id="para-028">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 28).</p>
+      <p id="para-029">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 29).</p>
+      <p id="para-030">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 30).</p>
+      <p id="para-031">Retrieval augmented generation grounds model output in verifiable sources before answering (section 31).</p>
+      <p id="para-032">Chunking strategy decides how much context each passage carries and both extremes hurt (section 32).</p>
+      <p id="para-033">Embedding models compress text into dense vectors whose distances approximate similarity (section 33).</p>
+      <p id="para-034">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 34).</p>
+      <p id="para-035">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 35).</p>
+      <p id="para-036">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 36).</p>
+      <p id="para-037">Retrieval augmented generation grounds model output in verifiable sources before answering (section 37).</p>
+      <p id="para-038">Chunking strategy decides how much context each passage carries and both extremes hurt (section 38).</p>
+      <p id="para-039">Embedding models compress text into dense vectors whose distances approximate similarity (section 39).</p>
+      <p id="para-040">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 40).</p>
+      <p id="para-041">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 41).</p>
+      <p id="para-042">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 42).</p>
+      <p id="para-043">Retrieval augmented generation grounds model output in verifiable sources before answering (section 43).</p>
+      <p id="para-044">Chunking strategy decides how much context each passage carries and both extremes hurt (section 44).</p>
+      <p id="para-045">Embedding models compress text into dense vectors whose distances approximate similarity (section 45).</p>
+      <p id="para-046">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 46).</p>
+      <p id="para-047">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 47).</p>
+      <p id="para-048">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 48).</p>
+      <p id="para-049">Retrieval augmented generation grounds model output in verifiable sources before answering (section 49).</p>
+      <p id="para-050">Chunking strategy decides how much context each passage carries and both extremes hurt (section 50).</p>
+      <p id="para-051">Embedding models compress text into dense vectors whose distances approximate similarity (section 51).</p>
+      <p id="para-052">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 52).</p>
+      <p id="para-053">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 53).</p>
+      <p id="para-054">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 54).</p>
+      <p id="para-055">Retrieval augmented generation grounds model output in verifiable sources before answering (section 55).</p>
+      <p id="para-056">Chunking strategy decides how much context each passage carries and both extremes hurt (section 56).</p>
+      <p id="para-057">Embedding models compress text into dense vectors whose distances approximate similarity (section 57).</p>
+      <p id="para-058">Hybrid search blends lexical matching with vector similarity so identifiers still match (section 58).</p>
+      <p id="para-059">Reranking scores a shortlist of candidates against the query and is slower but sharper (section 59).</p>
+      <p id="para-060">Evaluation of retrieval quality uses recall at k and mean reciprocal rank together (section 60).</p>
+    </div>
+  </body>
+</html>

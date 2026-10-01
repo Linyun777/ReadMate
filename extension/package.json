@@ -1,7 +1,7 @@
 {
   "name": "readmate-extension",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "description": "伴读 · ReadMate — 浏览器扩展（WXT + TypeScript + Manifest V3）",
   "license": "MIT",

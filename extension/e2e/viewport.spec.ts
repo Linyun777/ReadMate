@@ -24,6 +24,10 @@ const TOTAL_BLOCKS = 25;
 const LARGE_URL = 'http://127.0.0.1:8000/large-page.html';
 const LARGE_BLOCKS = 101;
 
+/** 正文滚在**内部容器**里的页面（1 个 h1 + 60 个段落） */
+const INNER_URL = 'http://127.0.0.1:8000/inner-scroller.html';
+const INNER_BLOCKS = 61;
+
 const VIEWPORT = { width: 900, height: 720 };
 
 interface Stats {
@@ -198,6 +202,38 @@ test.describe('Phase 9 · Viewport-first + Lazy', () => {
     expect(afterBottom.translateItems).toBeGreaterThan(firstScreen.translateItems);
     // 续翻只带「还没翻的」；若把已排队的又发一遍，总数会超过整页块数
     expect(afterBottom.translateItems).toBeLessThanOrEqual(LARGE_BLOCKS);
+
+    await popup.close();
+    await fixture.close();
+  });
+
+  test('⭐ 正文滚在内部容器里时，滚到它底部也会续翻', async ({ context, extensionId }) => {
+    const fixture = await context.newPage();
+    await fixture.setViewportSize(VIEWPORT);
+    await fixture.goto(INNER_URL);
+
+    const popup = await openPopup(context, extensionId);
+    await activateFixtureTab(context, INNER_URL);
+    await popup.locator('#translate').click();
+
+    await expect(popup.locator('#status')).toContainText('其余滚动时自动翻译', {
+      timeout: 60_000,
+    });
+    await expect(fixture.locator('#para-060 + [data-ai-translator="true"]')).toHaveCount(0);
+
+    // 把内部容器一次滚到底。`scroll` 事件**不冒泡**——监听挂在冒泡阶段时
+    // window 永远收不到这个事件，「续翻」在这类页面上就是失效的。
+    await fixture.evaluate(() => {
+      const pane = document.querySelector('#pane');
+      if (pane instanceof HTMLElement) {
+        pane.scrollTop = pane.scrollHeight;
+      }
+    });
+
+    await expect(popup.locator('#status')).toContainText(
+      `已翻译 ${INNER_BLOCKS}/${INNER_BLOCKS} 段`,
+      { timeout: 60_000 },
+    );
 
     await popup.close();
     await fixture.close();

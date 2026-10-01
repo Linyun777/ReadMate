@@ -89,6 +89,14 @@ export const DEFAULT_FLUSH_DELAY_MS = 150;
 /** 默认开启「滚到底续翻」 */
 export const DEFAULT_CONTINUE_AT_BOTTOM = true;
 
+/**
+ * 内部滚动条至少要有视口这么多比例的高度，才当成「正文滚动区」。
+ *
+ * 矮滚动条（代码块、下拉列表、侧边小面板）的「已经在底部」是天然成立的，
+ * 不加这条就会因为它们而误触发整页续翻——那是真金白银。
+ */
+const INNER_SCROLLER_MIN_RATIO = 0.5;
+
 const FALLBACK_VIEWPORT_HEIGHT = 800;
 
 function defaultViewportHeight(): number {
@@ -157,7 +165,7 @@ export class ViewportTracker {
 
   /** 到底续翻是否处于「已武装」状态（离开底部后重新武装） */
   #armedForBottom = true;
-  #scrollHandler: (() => void) | null = null;
+  #scrollHandler: ((event: Event) => void) | null = null;
 
   constructor(options: ViewportTrackerOptions = {}) {
     this.#getViewportHeight = options.getViewportHeight ?? defaultViewportHeight;
@@ -314,16 +322,25 @@ export class ViewportTracker {
     }
 
     if (this.#scrollHandler === null) {
-      this.#scrollHandler = () => this.#checkBottom();
-      globalThis.addEventListener('scroll', this.#scrollHandler, { passive: true });
+      // ⚠️ 必须挂在**捕获**阶段：`scroll` 事件**不冒泡**，内容滚在
+      // `overflow: auto` 的 div 里时事件停在那个 div 上，window 的冒泡
+      // 监听永远收不到——表现为「内部滚动容器的页面续翻不生效」。
+      // 捕获阶段能看到所有后代发出的 scroll，`event.target` 就是真正的滚动元素。
+      this.#scrollHandler = (event) => {
+        this.#checkBottom(event.target);
+      };
+      globalThis.addEventListener('scroll', this.#scrollHandler, {
+        passive: true,
+        capture: true,
+      });
     }
 
-    this.#checkBottom();
+    this.#checkBottom(null);
   }
 
   #unwatchBottom(): void {
     if (this.#scrollHandler !== null) {
-      globalThis.removeEventListener('scroll', this.#scrollHandler);
+      globalThis.removeEventListener('scroll', this.#scrollHandler, { capture: true });
       this.#scrollHandler = null;
     }
 
@@ -339,8 +356,13 @@ export class ViewportTracker {
    * `PageController.#handleEnter` 只收状态仍是 `UNTRANSLATED` 的 Block
    * （铁律 6：这里不自带任何并发）。
    */
-  #checkBottom(): void {
-    const { scrollTop, viewportHeight, scrollHeight } = this.#metrics();
+  #checkBottom(target: EventTarget | null): void {
+    const metrics = this.#metricsFor(target);
+    if (metrics === null) {
+      return;
+    }
+
+    const { scrollTop, viewportHeight, scrollHeight } = metrics;
 
     // `scrollTop > 0` 一句话挡掉两件事，所以不需要额外的「用户滚动过没有」状态：
     //   1. 页面刚打开、懒加载的图与区块还没把高度撑起来——此时
@@ -374,7 +396,49 @@ export class ViewportTracker {
     }
   }
 
-  #metrics(): ScrollMetrics {
-    return this.#getScrollMetrics?.() ?? readScrollMetrics(this.#getViewportHeight);
+  /**
+   * 这次滚动该用哪组指标。返回 `null` = 与我们无关，忽略。
+   */
+  #metricsFor(target: EventTarget | null): ScrollMetrics | null {
+    // 文档级滚动：真实浏览器把 viewport 的 scroll 事件派给 `document`，
+    // jsdom 里测试派发到 `window` 上——两者都不是 Element，一并归这里。
+    // `<html>` / `<body>` 也走这条（标准模式下 `scrollingElement` 就是它们）。
+    const scroller =
+      target instanceof Element && target !== document.documentElement && target !== document.body
+        ? target
+        : null;
+
+    if (scroller === null) {
+      return this.#getScrollMetrics?.() ?? readScrollMetrics(this.#getViewportHeight);
+    }
+
+    // ⚠️ 两条判据缺一不可——内部滚动条很容易「天然已在底部」，
+    // 照单全收就会误触发整页续翻（真金白银）。
+    //
+    //   ① 它得够高：正文滚动区通常占大半屏；代码块那种矮滚动条不算
+    //   ② 它得真的在滚我们翻译的内容
+    if (scroller.clientHeight < this.#getViewportHeight() * INNER_SCROLLER_MIN_RATIO) {
+      return null;
+    }
+    if (!this.#scrollsOurContent(scroller)) {
+      return null;
+    }
+
+    return {
+      scrollTop: scroller.scrollTop,
+      viewportHeight: scroller.clientHeight,
+      scrollHeight: scroller.scrollHeight,
+    };
+  }
+
+  /** 该滚动容器里是否装着至少一个还没翻的 Block。 */
+  #scrollsOurContent(scroller: Element): boolean {
+    for (const element of this.#byElement.keys()) {
+      if (scroller.contains(element)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }

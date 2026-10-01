@@ -17,7 +17,7 @@ export default defineConfig({
   manifest: {
     name: '伴读 · ReadMate',
     description: '网页翻译、阅读模式、总结与学习笔记（个人自用）',
-    version: '2.1.0',
+    version: '2.2.0',
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'sidePanel'],
     host_permissions: ['http://127.0.0.1:8000/*'],
   },
