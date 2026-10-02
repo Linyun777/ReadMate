@@ -9,7 +9,14 @@
  */
 
 import { TranslationCache } from '@/core/cache';
-import { loadSettings, resetSettings, saveSettings } from '@/core/settings';
+import {
+  ensureServerAccess,
+  loadSettings,
+  resetSettings,
+  saveSettings,
+  serverAccessMessage,
+  serverUrlWasReplaced,
+} from '@/core/settings';
 import {
   requestConfig,
   requestHealth,
@@ -158,11 +165,26 @@ function collectForm(): {
 
 saveButton?.addEventListener('click', () => {
   void (async () => {
+    const form = collectForm();
     // 走 saveSettings 而非直接写：它会做规范化并把非法值回落默认
-    const saved = await saveSettings(collectForm());
+    const saved = await saveSettings(form);
     await renderSettings();
 
-    setStatus(`已保存 · ${saved.serverUrl}`);
+    // 补授「这个地址」的访问权限。必须在这次点击的**用户手势**里发起，
+    // 所以放在事件处理的最前面几行，前面只有必要的 await。
+    const access = await ensureServerAccess(saved.serverUrl, chrome.permissions);
+    const message = serverAccessMessage(access, saved.serverUrl);
+
+    // 地址被规范化掉（多半是打错了）时要说出来，不能只回一句「已保存」
+    if (serverUrlWasReplaced(form.serverUrl, saved.serverUrl)) {
+      setStatus(
+        `${message.text}——但填的「${form.serverUrl}」不是合法的 http/https 地址，已回落默认`,
+        'error',
+      );
+      return;
+    }
+
+    setStatus(message.text, message.isError ? 'error' : 'info');
   })();
 });
 
@@ -184,6 +206,16 @@ testButton?.addEventListener('click', () => {
       // 先落盘再测，避免「测试的地址」与「保存的地址」不是同一个
       const saved = await saveSettings(collectForm());
       await renderSettings();
+
+      // 地址没有 host 权限时，健康检查只会得到一句 `Failed to fetch`——
+      // 那是个没有线索的报错。先补授权限，并把这个原因说清楚。
+      const access = await ensureServerAccess(saved.serverUrl, chrome.permissions);
+      if (access.kind === 'denied' || access.kind === 'invalid') {
+        const message = serverAccessMessage(access, saved.serverUrl);
+        setText(connectionStatusEl, message.text);
+        connectionStatusEl?.classList.add('inline-status--error');
+        return;
+      }
 
       const health = await requestHealth({ serverUrl: saved.serverUrl });
       // 两个模型都显示——「分别指定」这件事得能当场验证

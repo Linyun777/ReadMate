@@ -75,12 +75,17 @@ test.describe('Phase 13 · Options 设置页', () => {
     await page.close();
   });
 
-  test('非法服务地址回落默认，不会写坏存储', async ({ context, extensionId }) => {
+  test('非法服务地址回落默认，不会写坏存储，并且明说已回落', async ({ context, extensionId }) => {
     const page = await openOptions(context, extensionId);
 
     await page.getByLabel('FastAPI 服务地址').fill('ftp://example.com');
     await page.getByRole('button', { name: '保存设置' }).click();
     await expect(page.locator('#status')).toContainText('已保存');
+
+    // 静默回落会让用户以为地址生效了，然后对着连不上的服务排查半天——
+    // 回显他填的原值，并说清是回落（2026-10-02 补）
+    await expect(page.locator('#status')).toContainText('已回落默认');
+    await expect(page.locator('#status')).toContainText('ftp://example.com');
 
     // 保存时规范化，表单立刻回落到默认地址
     await expect(page.getByLabel('FastAPI 服务地址')).toHaveValue('http://127.0.0.1:8000');

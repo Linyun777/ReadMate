@@ -20,5 +20,13 @@ export default defineConfig({
     version: '2.2.0',
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'sidePanel'],
     host_permissions: ['http://127.0.0.1:8000/*'],
+    optional_host_permissions: ['http://*/*', 'https://*/*'],
+    // 设置页允许把服务地址改成别的（局域网里另一台机器、换个端口），而
+    // host_permissions 安装后就固定了——实测没有对应权限时后台 fetch 直接
+    // `Failed to fetch`（服务端没有 CORS 中间件）。所以这里声明「可能要访问
+    // 任意 http(s) 站点」，由设置页在用户点保存/测试连接时补授
+    // （`core/settings/host-permission.ts`）。
+    // ⚠️ 可选权限**不产生安装时的权限提示**，只在那一次请求时弹一次——
+    // 与 host_permissions 的「装了就全给」不同，符合最小权限。
   },
 });

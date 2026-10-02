@@ -5,6 +5,14 @@
  */
 
 export {
+  ensureServerAccess,
+  originPatternFor,
+  type PermissionsApi,
+  type ServerAccess,
+  serverAccessMessage,
+  serverUrlWasReplaced,
+} from './host-permission';
+export {
   DEFAULT_SETTINGS,
   loadSettings,
   normalizeSettings,
