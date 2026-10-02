@@ -254,6 +254,14 @@ export interface ContentScriptState {
   mode: DisplayMode;
   /** 进度统计。Popup 据此展示「已翻译 N/M 段」 */
   stats: BlockStats;
+  /**
+   * 一条失败原因（可能缺省）。
+   *
+   * ⚠️ 可选是**刻意的**：扩展重新加载后，已打开页面里还跑着旧版本的
+   * content script（见 `shared/extension-context.ts`），它不会带这个字段。
+   * 界面一律按「可能没有」处理，不要写 `state.failureReason.length`。
+   */
+  failureReason?: string;
 }
 
 export interface HealthResponse {

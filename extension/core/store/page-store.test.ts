@@ -185,6 +185,19 @@ describe('PageStore — 统计', () => {
     expect(stats.progress).toBe(0.5);
   });
 
+  it('failureReason 取一条失败原因，没有失败时为 null（给界面讲清「为什么」）', () => {
+    const store = new PageStore();
+
+    expect(store.failureReason()).toBeNull();
+
+    store.registerAll([makeBlock('block-001'), makeBlock('block-002')]);
+    store.markTranslated('block-001', 'a');
+    expect(store.failureReason()).toBeNull();
+
+    store.markFailed('block-002', 'TypeError: Failed to fetch');
+    expect(store.failureReason()).toBe('TypeError: Failed to fetch');
+  });
+
   it('clear 清空条目并重置页面状态', () => {
     const store = new PageStore();
     store.register(makeBlock('block-001'));

@@ -281,6 +281,23 @@ export class PageStore {
    * 统计与清理
    * ---------------------------------------------------------------- */
 
+  /**
+   * 一条失败原因（给界面用），没有失败时返回 null。
+   *
+   * 只取**一条**：`stats.failed` 回答「几段失败」，而用户想知道的是「为什么失败」。
+   * 同一轮的失败原因通常一样（服务没起来 / Key 不对 / 限流），逐条列出只会把
+   * 状态栏塞满、反而看不出重点。
+   */
+  failureReason(): string | null {
+    for (const entry of this.#entries.values()) {
+      if (entry.status === 'FAILED' && entry.error !== undefined && entry.error !== '') {
+        return entry.error;
+      }
+    }
+
+    return null;
+  }
+
   stats(): BlockStats {
     const counts: Record<TranslationStatus, number> = {
       UNTRANSLATED: 0,

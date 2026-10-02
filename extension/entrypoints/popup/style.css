@@ -206,3 +206,17 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+/* 快捷键提示：一行小字，没有生效的键时整行隐藏（`hidden`） */
+.popup__hint {
+  margin: 0;
+  padding-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* `hidden` 会被自己的 display 盖掉，显式兜一下（踩过一次） */
+.popup__hint[hidden] {
+  display: none;
+}

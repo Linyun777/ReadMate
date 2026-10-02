@@ -18,6 +18,10 @@
         <button id="restore" class="btn" type="button" disabled>恢复原文</button>
       </div>
 
+      <!-- 快捷键提示。文案由 chrome.commands.getAll() 现读现拼（见 core/commands），
+           用户在 chrome://extensions/shortcuts 改过键也会跟着变；没有生效的键就整行不显示 -->
+      <p id="shortcut-hint" class="popup__hint" hidden></p>
+
       <fieldset class="segmented">
         <legend class="segmented__legend">显示模式</legend>
         <div class="segmented__track">

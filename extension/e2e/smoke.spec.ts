@@ -29,6 +29,16 @@ test.describe('Phase 0 · 骨架冒烟', () => {
     await expect(page.locator('#translate')).toBeVisible();
     await expect(page.getByRole('radio', { name: '双语' })).toBeChecked();
 
+    // 快捷键提示：现读 `chrome.commands.getAll()` 现拼（见 core/commands）。
+    // 某条命令没生效时那一项不显示，全都没有就整行 `hidden`——所以「可见 +
+    // 三条都在」本身就是对 manifest 的 commands 与命令表一致性的端到端断言。
+    // 具体键位随平台变（macOS 是 ⌥T），因此只断言标签。
+    const hint = page.locator('#shortcut-hint');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText('翻译这个页面');
+    await expect(hint).toContainText('恢复原文');
+    await expect(hint).toContainText('用阅读模式打开');
+
     await page.close();
   });
 

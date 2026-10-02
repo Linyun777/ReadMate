@@ -20,7 +20,6 @@ export default defineConfig({
     version: '2.2.0',
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'sidePanel'],
     host_permissions: ['http://127.0.0.1:8000/*'],
-    optional_host_permissions: ['http://*/*', 'https://*/*'],
     // 设置页允许把服务地址改成别的（局域网里另一台机器、换个端口），而
     // host_permissions 安装后就固定了——实测没有对应权限时后台 fetch 直接
     // `Failed to fetch`（服务端没有 CORS 中间件）。所以这里声明「可能要访问
@@ -28,5 +27,24 @@ export default defineConfig({
     // （`core/settings/host-permission.ts`）。
     // ⚠️ 可选权限**不产生安装时的权限提示**，只在那一次请求时弹一次——
     // 与 host_permissions 的「装了就全给」不同，符合最小权限。
+    optional_host_permissions: ['http://*/*', 'https://*/*'],
+    // 键盘快捷键（2026-10-02）。名字必须与 `core/commands/page-command.ts`
+    // 的 `shortcutName` 一致——那边有单测钉住，改这里忘改那边会红。
+    // 用户可以在 chrome://extensions/shortcuts 里改键；Popup 显示的是
+    // **当前**生效的键（`chrome.commands.getAll()`），所以界面不会说谎。
+    commands: {
+      'translate-page': {
+        suggested_key: { default: 'Alt+T' },
+        description: '翻译当前页面',
+      },
+      'restore-page': {
+        suggested_key: { default: 'Alt+R' },
+        description: '恢复原文',
+      },
+      'open-reader': {
+        suggested_key: { default: 'Alt+Shift+R' },
+        description: '用阅读模式打开当前页面',
+      },
+    },
   },
 });

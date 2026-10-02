@@ -56,8 +56,31 @@ function isTranslateRequest(request) {
   return request.method === 'POST' && (request.url ?? '').startsWith('/api/v1/translate');
 }
 
+/**
+ * 失败注入（只存在于 E2E 服务器）。
+ *
+ * 用来测「翻译失败时界面说了什么」——服务端一切正常时这条分支永远走不到。
+ *   detail  —— 返回 400 + `{ detail }`（确定性错误，队列不会重试，跑得快）
+ *   network —— 直接断开连接（扩展看到的是 `Failed to fetch`）
+ */
+const failTranslate = { remaining: 0, mode: 'detail', detail: 'E2E 注入的服务端错误' };
+
 /** 把 `/api/v1/*` 的请求转发到真实 FastAPI。 */
 function proxyToApi(request, response) {
+  if (isTranslateRequest(request) && failTranslate.remaining > 0) {
+    failTranslate.remaining -= 1;
+    request.resume();
+
+    if (failTranslate.mode === 'network') {
+      response.destroy();
+      return;
+    }
+
+    response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify({ detail: failTranslate.detail }));
+    return;
+  }
+
   const target = new URL(request.url ?? '/', API_TARGET);
 
   const proxied = httpRequest(
@@ -117,17 +140,28 @@ function proxyToApi(request, response) {
 /**
  * 测试观测端点（仅存在于 E2E 服务器，不进入扩展）。
  *
- *   GET  /__e2e/stats   读取统计
- *   POST /__e2e/reset   归零
+ *   GET  /__e2e/stats                       读取统计
+ *   POST /__e2e/reset                       归零
+ *   POST /__e2e/fail-translate?count=1&mode=detail|network   注入翻译失败
  */
-function handleObservability(response, pathname) {
+function handleObservability(response, pathname, url) {
   if (pathname === '/__e2e/stats') {
     response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     response.end(JSON.stringify(stats));
     return true;
   }
 
+  if (pathname === '/__e2e/fail-translate') {
+    failTranslate.remaining = Number.parseInt(url.searchParams.get('count') ?? '1', 10) || 1;
+    failTranslate.mode = url.searchParams.get('mode') === 'network' ? 'network' : 'detail';
+    failTranslate.detail = url.searchParams.get('detail') ?? failTranslate.detail;
+    response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify(failTranslate));
+    return true;
+  }
+
   if (pathname === '/__e2e/reset') {
+    failTranslate.remaining = 0;
     stats.translateRequests = 0;
     stats.translateItems = 0;
     stats.lastTargetLanguage = null;
@@ -166,13 +200,13 @@ async function serveFixture(request, response) {
 }
 
 const server = createServer((request, response) => {
-  const pathname = new URL(request.url ?? '/', `http://127.0.0.1:${PORT}`).pathname;
+  const url = new URL(request.url ?? '/', `http://127.0.0.1:${PORT}`);
 
-  if (handleObservability(response, pathname)) {
+  if (handleObservability(response, url.pathname, url)) {
     return;
   }
 
-  if (pathname.startsWith('/api/')) {
+  if (url.pathname.startsWith('/api/')) {
     proxyToApi(request, response);
     return;
   }

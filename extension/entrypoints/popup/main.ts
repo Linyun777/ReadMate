@@ -11,6 +11,7 @@
  * （译文一直在 `PageStore` 里），详见 `core/controller`。
  */
 
+import { describeShortcutHint } from '@/core/commands';
 import { sendToBackground } from '@/core/messaging/client';
 import { createMessage } from '@/core/messaging/protocol';
 import {
@@ -31,6 +32,7 @@ const optionsButton = document.querySelector<HTMLButtonElement>('#open-options')
 const readerButton = document.querySelector<HTMLButtonElement>('#open-reader');
 const sidebarButton = document.querySelector<HTMLButtonElement>('#open-sidebar');
 const statusEl = document.querySelector<HTMLParagraphElement>('#status');
+const shortcutHintEl = document.querySelector<HTMLParagraphElement>('#shortcut-hint');
 const modeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="mode"]'));
 
 /**
@@ -215,8 +217,32 @@ translateButton?.addEventListener('click', () => {
   );
 });
 
+/**
+ * 显示快捷键提示。
+ *
+ * 现读现拼：用户在 `chrome://extensions/shortcuts` 里改过键，这里显示的就是
+ * 新键；某个键没生效（被别的扩展占了、或用户清空了）时那一项不显示，
+ * 全都没有就整行隐藏——显示一个按了没反应的键比不显示更糟。
+ */
+function renderShortcutHint(): void {
+  if (shortcutHintEl === null) {
+    return;
+  }
+
+  void chrome.commands.getAll().then((commands) => {
+    const hint = describeShortcutHint(commands);
+    if (hint === null) {
+      return;
+    }
+
+    shortcutHintEl.textContent = hint;
+    shortcutHintEl.hidden = false;
+  });
+}
+
 // 打开时同步一次，之后按秒轮询——这样进度文案是活的
 void queryState();
+renderShortcutHint();
 
 setInterval(() => {
   // 只刷新状态文案（进度会一直变）。

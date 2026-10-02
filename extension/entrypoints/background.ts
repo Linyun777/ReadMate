@@ -1,3 +1,10 @@
+import {
+  commandForMenuId,
+  commandForShortcut,
+  PAGE_COMMANDS,
+  type PageCommandSpec,
+  pageCommandMessage,
+} from '@/core/commands';
 import { sendToTab } from '@/core/messaging/client';
 import { createMessage, isExtensionMessage } from '@/core/messaging/protocol';
 import { storeReaderPayload } from '@/core/reader';
@@ -52,7 +59,7 @@ import type {
  * Content script 在构建产物中的路径。
  *
  * 由 WXT 生成，实测产物为 `content-scripts/content.js`。
- * **该路径会随 WXT 版本变化**——升级 WXT 后需重新确认（升级后需重新确认）。
+ * **该路径会随 WXT 版本变化**——升级 WXT 后需重新确认。
  */
 const CONTENT_SCRIPT_FILE = 'content-scripts/content.js';
 
@@ -125,6 +132,28 @@ const INJECTING_MESSAGES: ReadonlySet<string> = new Set([
 
 /** 右键菜单项 ID（方案第 41 节）。 */
 const EXPLAIN_MENU_ID = 'ai-web-translator-explain';
+
+/** 分隔线 ID：上面是「对整页」的命令，下面是「对选中文字」。 */
+const MENU_SEPARATOR_ID = 'ai-web-translator-separator';
+
+/**
+ * 执行一条页面级命令（右键菜单与快捷键共用）。
+ *
+ * 三条命令都需要页面里有 content script，所以一律走按需注入。
+ * 失败**不往界面上报**：这两个入口没有地方显示错误（菜单点完就关了、
+ * 快捷键按完什么也没有），能出错的场景（chrome:// 页面注入不了）也不是
+ * 用户需要被教育的错误——写进 console 就够查了。
+ */
+async function runPageCommand(tabId: number, spec: PageCommandSpec): Promise<void> {
+  try {
+    await sendWithLazyInject(tabId, pageCommandMessage(spec));
+  } catch (error) {
+    console.warn(
+      `[ReadMate] 页面命令 ${spec.command} 执行失败：`,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
 
 /** 总结选中内容的菜单项 ID（方案第 32 节第一层）。 */
 const SUMMARIZE_MENU_ID = 'ai-web-translator-summarize';
@@ -297,6 +326,21 @@ async function handleFetchExplain(
  */
 function setupContextMenus(): void {
   chrome.contextMenus.removeAll(() => {
+    // 对整页的三项（`contexts: ['page']`）：不点图标也能翻译 / 还原 / 进阅读模式
+    for (const spec of PAGE_COMMANDS) {
+      chrome.contextMenus.create({
+        id: spec.menuId,
+        title: spec.title,
+        contexts: ['page'],
+      });
+    }
+
+    chrome.contextMenus.create({
+      id: MENU_SEPARATOR_ID,
+      type: 'separator',
+      contexts: ['page', 'selection'],
+    });
+
     chrome.contextMenus.create({
       id: EXPLAIN_MENU_ID,
       title: '用 AI 解释「%s」',
@@ -313,6 +357,12 @@ function setupContextMenus(): void {
 
   chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (typeof tab?.id !== 'number') {
+      return;
+    }
+
+    const pageCommand = commandForMenuId(String(info.menuItemId));
+    if (pageCommand !== null) {
+      void runPageCommand(tab.id, pageCommand);
       return;
     }
 
@@ -413,10 +463,34 @@ async function handleFetchUsage(): Promise<MessageResponse<WireUsageResponse>> {
   }
 }
 
+/**
+ * 键盘快捷键（`wxt.config.ts` 的 `commands`）。
+ *
+ * 与右键菜单走**同一个** `runPageCommand`——两个入口做的事必须一模一样，
+ * 否则「菜单能翻译、快捷键不行」这类偏差迟早出现。
+ * 键位由浏览器管理（用户可在 chrome://extensions/shortcuts 改）。
+ */
+function setupCommands(): void {
+  chrome.commands.onCommand.addListener((name) => {
+    const spec = commandForShortcut(name);
+    if (spec === null) {
+      return;
+    }
+
+    void chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (typeof tab?.id === 'number') {
+        return runPageCommand(tab.id, spec);
+      }
+      return undefined;
+    });
+  });
+}
+
 export default defineBackground(() => {
   console.info('[ReadMate] background service worker ready');
 
   setupContextMenus();
+  setupCommands();
 
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name === STREAM_PORT_NAME) {

@@ -45,6 +45,8 @@ function describe(controller: PageController): ContentScriptState {
     title: document.title,
     mode: snapshot.mode,
     stats: snapshot.stats,
+    // store 用 null 表示「没有」，协议里用「字段缺省」表示（JSON 更干净）
+    failureReason: snapshot.failureReason ?? undefined,
   };
 }
 

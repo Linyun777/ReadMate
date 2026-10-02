@@ -102,6 +102,8 @@ export interface PageSnapshot {
   state: PageState;
   mode: DisplayMode;
   stats: BlockStats;
+  /** 一条失败原因（给 Popup / 侧边栏讲清「为什么失败」），没有失败时为 null */
+  failureReason: string | null;
 }
 
 export interface TranslatePageResult {
@@ -268,6 +270,7 @@ export class PageController {
       state: this.#store.pageState,
       mode: this.#mode,
       stats: this.#store.stats(),
+      failureReason: this.#store.failureReason(),
     };
   }
 

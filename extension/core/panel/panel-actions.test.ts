@@ -10,6 +10,7 @@ import {
   requestRestore,
   requestSetMode,
   requestTranslate,
+  summarizeFailure,
   toDisplayMode,
 } from './panel-actions';
 
@@ -185,5 +186,58 @@ describe('describeState', () => {
     state.stats.failed = 1;
 
     expect(describeState(state)).toBe('已恢复原文，10 段译文已缓存（失败 1）');
+  });
+});
+
+describe('失败原因（2026-10-02 补）', () => {
+  it('全部失败时把原因说清楚——只报段数等于什么都没说', () => {
+    const state = makeState({ failureReason: '服务端返回 401' });
+    state.stats.translated = 0;
+    state.stats.failed = 3;
+
+    expect(describeState(state)).toBe('翻译失败：3 段未成功：服务端返回 401');
+  });
+
+  it('部分失败时也带上原因', () => {
+    const state = makeState({ failureReason: 'HTTP 502' });
+    state.stats.failed = 2;
+
+    expect(describeState(state)).toBe('已翻译 10/10 段（失败 2）：HTTP 502');
+  });
+
+  it('恢复原文后同样带原因', () => {
+    const state = makeState({ state: 'RESTORED', failureReason: 'HTTP 502' });
+    state.stats.failed = 1;
+
+    expect(describeState(state)).toBe('已恢复原文，10 段译文已缓存（失败 1）：HTTP 502');
+  });
+
+  it('没有原因时不硬凑——老页面的 content script 不带这个字段', () => {
+    const state = makeState();
+    state.stats.failed = 2;
+
+    expect(describeState(state)).toBe('已翻译 10/10 段（失败 2）');
+  });
+
+  it('没有失败时不显示原因（哪怕字段里残留着上一次的）', () => {
+    expect(describeState(makeState({ failureReason: '陈年旧事' }))).toBe('已翻译 10/10 段');
+  });
+
+  it('浏览器的网络错误换成人话 + 下一步', () => {
+    expect(summarizeFailure('TypeError: Failed to fetch')).toBe(
+      '连不上本地服务，确认它已启动（设置页可测试连接）',
+    );
+  });
+
+  it('服务端的详情原样保留，太长才截断', () => {
+    expect(summarizeFailure('服务端未配置 LLM_API_KEY')).toBe('服务端未配置 LLM_API_KEY');
+    expect(summarizeFailure('x'.repeat(200))).toBe(`${'x'.repeat(59)}…`);
+  });
+
+  it('空值 / 空白 / 换行都收拾干净', () => {
+    expect(summarizeFailure(null)).toBeNull();
+    expect(summarizeFailure(undefined)).toBeNull();
+    expect(summarizeFailure('   ')).toBeNull();
+    expect(summarizeFailure('第一行\n第二行')).toBe('第一行 第二行');
   });
 });
